@@ -28,6 +28,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
         # structured log with correlation id
         logger = logging.getLogger("http")
+        user_id = request.headers.get("X-User-Id", "system")
         logger.info(
             "request",
             extra={
@@ -37,6 +38,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                     "status": response.status_code,
                     "duration_ms": round(elapsed * 1000, 3),
                     "request_id": request_id,
+                    "user_id": user_id,
                 }
             },
         )

@@ -1,6 +1,7 @@
 from typing import Any
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import BigInteger, Text, JSON, ForeignKey, String
+from datetime import datetime
+from sqlalchemy import BigInteger, Text, JSON, ForeignKey, String, Integer, DateTime, func
 from sqlalchemy.orm import relationship
 
 from app.infra.db.base import Base, TimestampMixin
@@ -32,12 +33,24 @@ class Node(Base, TimestampMixin):
     documents = relationship("NodeDocument", back_populates="node")
 
 
-class NodeDocument(Base):
+class NodeDocument(Base, TimestampMixin):
     __tablename__ = "node_documents"
 
     node_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("nodes.id"), primary_key=True)
     document_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("documents.id"), primary_key=True)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
     node = relationship("Node", back_populates="documents")
     document = relationship("Document", back_populates="nodes")
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+
+    key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_body: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

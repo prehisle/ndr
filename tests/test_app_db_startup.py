@@ -58,4 +58,4 @@ def test_tables_created_on_startup_sqlite_memory():
         # verify metadata has tables
         # Note: using app.infra.db.base.Base metadata
         tables = set(Base.metadata.tables.keys())
-        assert {"documents", "nodes", "node_documents"}.issubset(tables)
+        assert {"documents", "nodes", "node_documents", "idempotency_records"}.issubset(tables)

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.main import create_app
@@ -105,3 +106,99 @@ def test_node_crud_and_children_and_relationships():
     # Unbind
     r = client.delete(f"/api/v1/nodes/{child_id}/unbind/{doc_id}")
     assert r.status_code == 200
+
+    # List relationships after unbind -> empty
+    r = client.get(f"/api/v1/relationships?node_id={child_id}")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_document_idempotency_key_reuses_response():
+    app = create_app()
+    client = TestClient(app)
+
+    headers = {"X-User-Id": "u1", "Idempotency-Key": "doc-create-1"}
+    payload = {"title": "Spec C", "metadata": {"type": "spec"}}
+    r1 = client.post("/api/v1/documents", json=payload, headers=headers)
+    assert r1.status_code == 201
+    created = r1.json()
+
+    # 重新提交相同请求，应复用原响应，不重复创建
+    r2 = client.post("/api/v1/documents", json=payload, headers=headers)
+    assert r2.status_code == 201
+    assert r2.json() == created
+
+    # 同一 Key 但不同内容 -> 409 冲突
+    r3 = client.post(
+        "/api/v1/documents",
+        json={"title": "Spec D", "metadata": {"type": "spec"}},
+        headers=headers,
+    )
+    assert r3.status_code == 409
+
+    with SessionLocal() as session:
+        total = session.scalar(select(func.count()).select_from(Document))
+        assert total == 1
+
+
+def test_node_path_and_sibling_name_uniqueness():
+    app = create_app()
+    client = TestClient(app)
+
+    headers = {"X-User-Id": "u1"}
+
+    # Create root node
+    r_root = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers=headers,
+    )
+    assert r_root.status_code == 201
+
+    # Duplicate path (same slug under root) -> 409
+    r_dup_path = client.post(
+        "/api/v1/nodes",
+        json={"name": "Another Root", "slug": "root"},
+        headers=headers,
+    )
+    assert r_dup_path.status_code == 409
+
+    # Create child under root
+    r_child = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child", "parent_path": "root"},
+        headers=headers,
+    )
+    assert r_child.status_code == 201
+
+    # Same parent, same name -> 409 even with different slug
+    r_dup_name = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child-2", "parent_path": "root"},
+        headers=headers,
+    )
+    assert r_dup_name.status_code == 409
+
+    # Same name under different parent should succeed
+    r_other_root = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "other-root"},
+        headers=headers,
+    )
+    assert r_other_root.status_code == 201
+
+    # Soft-delete relationship and rebind reuse existing
+    child_id = r_child.json()["id"]
+    doc_resp = client.post("/api/v1/documents", json={"title": "Doc", "metadata": {}}, headers=headers)
+    doc_id = doc_resp.json()["id"]
+    bind_resp = client.post(f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers)
+    assert bind_resp.status_code == 200
+
+    unbind_resp = client.delete(f"/api/v1/nodes/{child_id}/unbind/{doc_id}", headers=headers)
+    assert unbind_resp.status_code == 200
+
+    # Rebind should reopen existing relation (not create duplicate)
+    rebind_resp = client.post(f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers)
+    assert rebind_resp.status_code == 200
+    rels = client.get(f"/api/v1/relationships?node_id={child_id}").json()
+    assert len(rels) == 1

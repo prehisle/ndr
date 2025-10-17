@@ -14,7 +14,7 @@ from app.api.v1.routers.relationships import router as relationships_router
 from app.infra.observability.middleware import MetricsMiddleware
 from app.infra.observability.metrics import metrics_app
 from app.api.v1.deps import get_db, require_api_key
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from app.infra.db.base import Base
 from app.infra.db.session import engine
 
@@ -91,6 +91,12 @@ def create_app() -> FastAPI:
     async def ready(db=Depends(get_db)):
         try:
             db.execute(text("SELECT 1"))
+            inspector = inspect(db.get_bind())
+            tables = set(inspector.get_table_names())
+            required_tables = {"documents", "nodes", "node_documents", "idempotency_records"}
+            missing = sorted(required_tables - tables)
+            if missing:
+                return {"status": "not_ready", "detail": {"missing_tables": missing}}
             return {"status": "ready"}
         except Exception as e:
             return {"status": "not_ready", "detail": str(e)}

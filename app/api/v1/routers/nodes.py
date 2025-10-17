@@ -1,11 +1,12 @@
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from app.api.v1.deps import get_db, get_request_context
 from app.infra.db.models import Node, Document, NodeDocument
 from app.api.v1.schemas.nodes import NodeCreate, NodeUpdate, NodeOut, NodesPage
+from app.common.idempotency import IdempotencyService
 
 
 router = APIRouter()
@@ -14,15 +15,49 @@ router = APIRouter()
 # Using NodeCreate/NodeUpdate from app.api.v1.schemas.nodes
 
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
-def create_node(payload: NodeCreate, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
+def create_node(
+    request: Request,
+    payload: NodeCreate,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
     user_id = ctx["user_id"]
-    # path 以 slug 构建，父路径存在时以父路径作为前缀
-    path = payload.slug if not payload.parent_path else f"{payload.parent_path}.{payload.slug}"
-    node = Node(name=payload.name, slug=payload.slug, path=path, created_by=user_id, updated_by=user_id)
-    db.add(node)
-    db.commit()
-    db.refresh(node)
-    return node
+    service = IdempotencyService(db)
+
+    def executor():
+        path = payload.slug if not payload.parent_path else f"{payload.parent_path}.{payload.slug}"
+        # 路径唯一性校验（仅针对未软删节点）
+        conflict = db.execute(
+            select(Node).where(Node.deleted_at.is_(None), Node.path == path)
+        ).scalar_one_or_none()
+        if conflict:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Node path already exists")
+
+        # 同一父节点下 name 唯一
+        parent_path = payload.parent_path if payload.parent_path else None
+        siblings_stmt = select(Node).where(Node.deleted_at.is_(None), Node.name == payload.name)
+        for sibling in db.execute(siblings_stmt).scalars():
+            sibling_parent = sibling.path.rsplit(".", 1)[0] if "." in sibling.path else None
+            if sibling_parent == parent_path:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Node name already exists under the same parent",
+                )
+
+        node = Node(name=payload.name, slug=payload.slug, path=path, created_by=user_id, updated_by=user_id)
+        db.add(node)
+        db.commit()
+        db.refresh(node)
+        return node
+
+    result = service.handle(
+        request=request,
+        payload={"body": payload.model_dump(), "user_id": user_id},
+        status_code=status.HTTP_201_CREATED,
+        executor=executor,
+    )
+    assert result is not None
+    return result.response
 
 
 @router.get("/nodes/{id}", response_model=NodeOut)
@@ -34,22 +69,66 @@ def get_node(id: int, db: Session = Depends(get_db), include_deleted: bool = Fal
 
 
 @router.put("/nodes/{id}", response_model=NodeOut)
-def update_node(id: int, payload: NodeUpdate, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
+def update_node(
+    request: Request,
+    id: int,
+    payload: NodeUpdate,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
     node = db.get(Node, id)
     if not node or node.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Node not found")
-    if payload.name is not None:
-        node.name = payload.name
-    if payload.slug is not None:
-        # 更新 slug 同步更新 path 的最后一段（简化处理）
-        parts = node.path.split(".")
-        parts[-1] = payload.slug
-        node.slug = payload.slug
-        node.path = ".".join(parts)
-    node.updated_by = ctx["user_id"]
-    db.commit()
-    db.refresh(node)
-    return node
+
+    user_id = ctx["user_id"]
+    service = IdempotencyService(db)
+
+    def executor():
+        if payload.name is not None:
+            # 校验同一父路径下 name 唯一
+            parent_path = node.path.rsplit(".", 1)[0] if "." in node.path else None
+            siblings_stmt = select(Node).where(
+                Node.deleted_at.is_(None),
+                Node.name == payload.name,
+                Node.id != node.id,
+            )
+            for sibling in db.execute(siblings_stmt).scalars():
+                sibling_parent = sibling.path.rsplit(".", 1)[0] if "." in sibling.path else None
+                if sibling_parent == parent_path:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Node name already exists under the same parent",
+                    )
+            node.name = payload.name
+        if payload.slug is not None:
+            parts = node.path.split(".")
+            parts[-1] = payload.slug
+            new_path = ".".join(parts)
+            # 校验路径唯一
+            conflict = db.execute(
+                select(Node).where(
+                    Node.deleted_at.is_(None),
+                    Node.path == new_path,
+                    Node.id != node.id,
+                )
+            ).scalar_one_or_none()
+            if conflict:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Node path already exists")
+            node.slug = payload.slug
+            node.path = new_path
+        node.updated_by = user_id
+        db.commit()
+        db.refresh(node)
+        return node
+
+    result = service.handle(
+        request=request,
+        payload={"body": payload.model_dump(mode="json"), "resource_id": id, "user_id": user_id},
+        status_code=status.HTTP_200_OK,
+        executor=executor,
+    )
+    assert result is not None
+    return result.response
 
 
 @router.delete("/nodes/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -89,22 +168,29 @@ def bind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Depen
         raise HTTPException(status_code=404, detail="Node not found")
     if not doc or doc.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Document not found")
-    # check exists
+    user_id = ctx["user_id"]
     exists_stmt = select(NodeDocument).where(NodeDocument.node_id == id, NodeDocument.document_id == doc_id)
-    if db.execute(exists_stmt).scalar_one_or_none():
+    existing = db.execute(exists_stmt).scalar_one_or_none()
+    if existing:
+        if existing.deleted_at is None:
+            return {"ok": True}
+        existing.deleted_at = None
+        existing.updated_by = user_id
+        db.commit()
         return {"ok": True}
-    nd = NodeDocument(node_id=id, document_id=doc_id, created_by=ctx["user_id"]) 
+    nd = NodeDocument(node_id=id, document_id=doc_id, created_by=user_id, updated_by=user_id)
     db.add(nd)
     db.commit()
     return {"ok": True}
 
 @router.delete("/nodes/{id}/unbind/{doc_id}")
-def unbind_document(id: int, doc_id: int, db: Session = Depends(get_db)):
+def unbind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
     stmt = select(NodeDocument).where(NodeDocument.node_id == id, NodeDocument.document_id == doc_id)
     nd = db.execute(stmt).scalar_one_or_none()
-    if not nd:
+    if not nd or nd.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Relation not found")
-    db.delete(nd)
+    nd.deleted_at = func.now()
+    nd.updated_by = ctx["user_id"]
     db.commit()
     return {"ok": True}
 
