@@ -51,6 +51,16 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+## 性能与基准
+
+仓库提供 `scripts/benchmark_ltree.py` 用于对 GIST/GIN 索引下的子树查询进行基准测试：
+
+```bash
+.venv/bin/python scripts/benchmark_ltree.py --index gist --index gin --samples 30 --breadth 5 --depth 4
+```
+
+> 运行前请确保目标 PostgreSQL 实例已启用 `ltree` 与 `btree_gist` 扩展，并在环境变量 `DB_URL` 中指向该实例。
+
 ## 后续工作指引
 
 - 按照 `docs/03_当前状态.md` 中的建议，补齐节点移动的并发处理及基于 ltree 的子树查询与索引验证。
