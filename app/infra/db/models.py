@@ -1,11 +1,12 @@
 from typing import Any
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
-from sqlalchemy import BigInteger, Text, JSON, ForeignKey, String, Integer, DateTime, func
+from sqlalchemy import BigInteger, Text, JSON, ForeignKey, String, Integer, DateTime, func, Index, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.infra.db.base import Base, TimestampMixin
+from app.infra.db.types import LtreeType, HAS_POSTGRES_LTREE
 
 METADATA_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
@@ -25,11 +26,32 @@ class Document(Base, TimestampMixin):
 
 class Node(Base, TimestampMixin):
     __tablename__ = "nodes"
+    _path_index_kwargs: dict[str, Any] = {"postgresql_using": "gist"} if HAS_POSTGRES_LTREE else {}
+    __table_args__ = (
+        # ltree child/ancestor queries rely on gist; fallback to btree when gist is unavailable.
+        Index("ix_nodes_path_tree", "path", **_path_index_kwargs),
+        Index(
+            "uq_nodes_path_active",
+            "path",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_nodes_parent_name_active",
+            text("coalesce(parent_path, '')"),
+            "name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
-    path: Mapped[str] = mapped_column(String(2048), nullable=False)  # ltree 兼容占位，使用点分层级
+    parent_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    path: Mapped[str] = mapped_column(LtreeType(), nullable=False)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 

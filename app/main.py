@@ -15,8 +15,9 @@ from app.infra.observability.middleware import MetricsMiddleware
 from app.infra.observability.metrics import metrics_app
 from app.api.v1.deps import get_db, require_api_key
 from sqlalchemy import text, inspect
-from app.infra.db.base import Base
-from app.infra.db.session import engine
+from sqlalchemy.exc import OperationalError
+
+from app.infra.db.alembic_support import get_head_revision, upgrade_to_head
 
 
 def create_app() -> FastAPI:
@@ -50,8 +51,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def on_startup() -> None:
-        # 开发态：自动创建表，便于快速起服务；生产改为 Alembic 迁移
-        Base.metadata.create_all(bind=engine)
+        if settings.AUTO_APPLY_MIGRATIONS:
+            upgrade_to_head()
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
@@ -90,16 +91,44 @@ def create_app() -> FastAPI:
     @app.get("/ready")
     async def ready(db=Depends(get_db)):
         try:
+            bind = db.get_bind()
             db.execute(text("SELECT 1"))
-            inspector = inspect(db.get_bind())
+            inspector = inspect(bind)
             tables = set(inspector.get_table_names())
             required_tables = {"documents", "nodes", "node_documents", "idempotency_records"}
             missing = sorted(required_tables - tables)
+            detail: dict[str, object] = {}
             if missing:
-                return {"status": "not_ready", "detail": {"missing_tables": missing}}
+                detail["missing_tables"] = missing
+
+            dialect = bind.dialect.name
+            if dialect == "postgresql":
+                head = get_head_revision()
+                try:
+                    current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+                except Exception as exc:  # pragma: no cover - defensive path
+                    detail["migrations"] = {
+                        "status": "version_table_missing",
+                        "expected": head,
+                        "detail": str(exc),
+                    }
+                    current = None
+                else:
+                    if head and current != head:
+                        detail["migrations"] = {"status": "out_of_date", "current": current, "expected": head}
+                ltree_enabled = db.execute(
+                    text("SELECT 1 FROM pg_extension WHERE extname = 'ltree'")
+                ).scalar_one_or_none()
+                if not ltree_enabled:
+                    detail["ltree_extension"] = "missing"
+
+            if detail:
+                return {"status": "not_ready", "detail": detail}
             return {"status": "ready"}
-        except Exception as e:
-            return {"status": "not_ready", "detail": str(e)}
+        except OperationalError as exc:
+            return {"status": "not_ready", "detail": {"db": str(exc)}}
+        except Exception as exc:  # pragma: no cover - defensive path
+            return {"status": "not_ready", "detail": str(exc)}
 
     return app
 

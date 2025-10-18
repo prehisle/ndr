@@ -25,7 +25,8 @@ def create_node(
     service = IdempotencyService(db)
 
     def executor():
-        path = payload.slug if not payload.parent_path else f"{payload.parent_path}.{payload.slug}"
+        parent_path = payload.parent_path or None
+        path = payload.slug if not parent_path else f"{parent_path}.{payload.slug}"
         # 路径唯一性校验（仅针对未软删节点）
         conflict = db.execute(
             select(Node).where(Node.deleted_at.is_(None), Node.path == path)
@@ -34,17 +35,26 @@ def create_node(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Node path already exists")
 
         # 同一父节点下 name 唯一
-        parent_path = payload.parent_path if payload.parent_path else None
-        siblings_stmt = select(Node).where(Node.deleted_at.is_(None), Node.name == payload.name)
-        for sibling in db.execute(siblings_stmt).scalars():
-            sibling_parent = sibling.path.rsplit(".", 1)[0] if "." in sibling.path else None
-            if sibling_parent == parent_path:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Node name already exists under the same parent",
-                )
+        siblings_stmt = select(Node).where(
+            Node.deleted_at.is_(None),
+            Node.parent_path.is_(parent_path) if parent_path is None else Node.parent_path == parent_path,
+            Node.name == payload.name,
+        )
+        sibling_conflict = db.execute(siblings_stmt).scalar_one_or_none()
+        if sibling_conflict:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Node name already exists under the same parent",
+            )
 
-        node = Node(name=payload.name, slug=payload.slug, path=path, created_by=user_id, updated_by=user_id)
+        node = Node(
+            name=payload.name,
+            slug=payload.slug,
+            parent_path=parent_path,
+            path=path,
+            created_by=user_id,
+            updated_by=user_id,
+        )
         db.add(node)
         db.commit()
         db.refresh(node)
@@ -86,19 +96,18 @@ def update_node(
     def executor():
         if payload.name is not None:
             # 校验同一父路径下 name 唯一
-            parent_path = node.path.rsplit(".", 1)[0] if "." in node.path else None
             siblings_stmt = select(Node).where(
                 Node.deleted_at.is_(None),
                 Node.name == payload.name,
                 Node.id != node.id,
+                Node.parent_path.is_(node.parent_path) if node.parent_path is None else Node.parent_path == node.parent_path,
             )
-            for sibling in db.execute(siblings_stmt).scalars():
-                sibling_parent = sibling.path.rsplit(".", 1)[0] if "." in sibling.path else None
-                if sibling_parent == parent_path:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="Node name already exists under the same parent",
-                    )
+            conflict = db.execute(siblings_stmt).scalar_one_or_none()
+            if conflict:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Node name already exists under the same parent",
+                )
             node.name = payload.name
         if payload.slug is not None:
             parts = node.path.split(".")

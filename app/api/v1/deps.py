@@ -1,11 +1,12 @@
 from typing import Generator
 from fastapi import Header, HTTPException
-from app.infra.db.session import SessionLocal
+from app.infra.db.session import get_session_factory
 from app.common.config import get_settings
 
 
 def get_db() -> Generator:
-    db = SessionLocal()
+    session_factory = get_session_factory()
+    db = session_factory()
     try:
         yield db
     except Exception:

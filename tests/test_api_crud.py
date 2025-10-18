@@ -1,9 +1,8 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import select, func
-from sqlalchemy.orm import Session
 
 from app.main import create_app
-from app.infra.db.session import SessionLocal
+from app.infra.db.session import get_session_factory
 from app.infra.db.models import Document, Node, NodeDocument
 
 
@@ -136,7 +135,8 @@ def test_document_idempotency_key_reuses_response():
     )
     assert r3.status_code == 409
 
-    with SessionLocal() as session:
+    session_factory = get_session_factory()
+    with session_factory() as session:
         total = session.scalar(select(func.count()).select_from(Document))
         assert total == 1
 
