@@ -1,4 +1,3 @@
-from typing import Any
 from datetime import datetime
 from pydantic import BaseModel
 from pydantic.config import ConfigDict
@@ -13,6 +12,7 @@ class NodeCreate(BaseModel):
 class NodeUpdate(BaseModel):
     name: str | None = None
     slug: str | None = None
+    parent_path: str | None = None
 
 
 class NodeOut(BaseModel):

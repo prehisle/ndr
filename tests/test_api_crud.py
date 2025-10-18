@@ -57,6 +57,16 @@ def test_node_crud_and_children_and_relationships():
     root_id = root["id"]
     assert root["path"] == "root"
 
+    # Create second root node to support later move
+    r = client.post(
+        "/api/v1/nodes",
+        json={"name": "Other Root", "slug": "other-root"},
+        headers={"X-User-Id": "u1"},
+    )
+    assert r.status_code == 201
+    other_root = r.json()
+    other_root_id = other_root["id"]
+
     # Create child under root
     r = client.post(
         "/api/v1/nodes",
@@ -68,24 +78,41 @@ def test_node_crud_and_children_and_relationships():
     child_id = child["id"]
     assert child["path"] == "root.child"
 
-    # Update child slug -> path changes last segment
+    # Create grandchild under child path
+    r = client.post(
+        "/api/v1/nodes",
+        json={"name": "Grand", "slug": "grand", "parent_path": "root.child"},
+        headers={"X-User-Id": "u1"},
+    )
+    assert r.status_code == 201
+    grand = r.json()
+    grand_id = grand["id"]
+
+    # Update child slug -> entire subtree path updates
     r = client.put(
         f"/api/v1/nodes/{child_id}",
         json={"slug": "kid"},
         headers={"X-User-Id": "u2"},
     )
     assert r.status_code == 200
-    assert r.json()["path"] == "root.kid"
+    child = r.json()
+    assert child["path"] == "root.kid"
+    r = client.get(f"/api/v1/nodes/{grand_id}")
+    assert r.status_code == 200
+    assert r.json()["path"] == "root.kid.grand"
 
-    # Create grandchild under updated child path
-    r = client.post(
-        "/api/v1/nodes",
-        json={"name": "Grand", "slug": "grand", "parent_path": "root.kid"},
-        headers={"X-User-Id": "u1"},
+    # Move child subtree under second root
+    r = client.put(
+        f"/api/v1/nodes/{child_id}",
+        json={"parent_path": "other-root"},
+        headers={"X-User-Id": "u3"},
     )
-    assert r.status_code == 201
-    grand = r.json()
-    grand_id = grand["id"]
+    assert r.status_code == 200
+    child = r.json()
+    assert child["path"] == "other-root.kid"
+    r = client.get(f"/api/v1/nodes/{grand_id}")
+    assert r.status_code == 200
+    assert r.json()["path"] == "other-root.kid.grand"
 
     # List nodes (exclude deleted)
     r = client.get("/api/v1/nodes?page=1&size=10")
@@ -95,14 +122,14 @@ def test_node_crud_and_children_and_relationships():
     assert len(data["items"]) >= 2
 
     # Children depth=1 should only include immediate children
-    r = client.get(f"/api/v1/nodes/{root_id}/children?depth=1")
+    r = client.get(f"/api/v1/nodes/{other_root_id}/children?depth=1")
     assert r.status_code == 200
     children = r.json()
     assert any(n["id"] == child_id for n in children)
     assert all(n["id"] != grand_id for n in children)
 
     # Depth=2 should include grandchildren
-    r = client.get(f"/api/v1/nodes/{root_id}/children?depth=2")
+    r = client.get(f"/api/v1/nodes/{other_root_id}/children?depth=2")
     assert r.status_code == 200
     depth_two = r.json()
     assert any(n["id"] == grand_id for n in depth_two)
@@ -187,6 +214,15 @@ def test_node_path_and_sibling_name_uniqueness():
         headers=headers,
     )
     assert r_child.status_code == 201
+
+    # Moving root under its descendant should be rejected
+    root_id = r_root.json()["id"]
+    r_invalid_move = client.put(
+        f"/api/v1/nodes/{root_id}",
+        json={"parent_path": "root.child"},
+        headers=headers,
+    )
+    assert r_invalid_move.status_code == 400
 
     # Same parent, same name -> 409 even with different slug
     r_dup_name = client.post(
