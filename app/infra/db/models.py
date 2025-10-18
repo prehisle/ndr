@@ -3,8 +3,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 from sqlalchemy import BigInteger, Text, JSON, ForeignKey, String, Integer, DateTime, func
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.infra.db.base import Base, TimestampMixin
+
+METADATA_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Document(Base, TimestampMixin):
@@ -13,7 +16,7 @@ class Document(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     # SQLAlchemy Declarative 保留了 "metadata" 名称，这里使用 metadata_ 作为属性名，并映射到列名 "metadata"
-    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", METADATA_JSON_TYPE, default=dict, nullable=False)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
