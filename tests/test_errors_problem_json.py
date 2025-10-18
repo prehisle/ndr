@@ -21,7 +21,11 @@ def test_validation_error_problem_json():
     app = create_app()
     client = TestClient(app)
     # invalid metadata type should trigger 422 Validation Error
-    r = client.post("/api/v1/documents", json={"title": "x", "metadata": "not-a-dict"}, headers={"X-User-Id": "u"})
+    r = client.post(
+        "/api/v1/documents",
+        json={"title": "x", "metadata": "not-a-dict"},
+        headers={"X-User-Id": "u"},
+    )
     assert r.status_code == 422
     assert r.headers.get("content-type", "").startswith("application/problem+json")
     body = r.json()

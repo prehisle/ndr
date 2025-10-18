@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache
-import os
 from pathlib import Path
-
 
 ENV_FILE = Path(".env.development")
 
@@ -49,7 +48,9 @@ class Settings:
     def __post_init__(self) -> None:
         db_scheme = self.DB_URL.split(":", 1)[0].lower()
         if not db_scheme.startswith("postgresql"):
-            raise ValueError("DB_URL must point to a PostgreSQL datasource (postgresql+driver://...).")
+            raise ValueError(
+                "DB_URL must point to a PostgreSQL datasource (postgresql+driver://...)."
+            )
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -57,13 +58,21 @@ class Settings:
         db_url = os.environ.get("DB_URL", cls.DB_URL)
         return cls(
             DB_URL=db_url,
-            DB_CONNECT_TIMEOUT=int(os.environ.get("DB_CONNECT_TIMEOUT", cls.DB_CONNECT_TIMEOUT)),
-            ENABLE_METRICS=_as_bool(os.environ.get("ENABLE_METRICS"), cls.ENABLE_METRICS),
-            API_KEY_ENABLED=_as_bool(os.environ.get("API_KEY_ENABLED"), cls.API_KEY_ENABLED),
+            DB_CONNECT_TIMEOUT=int(
+                os.environ.get("DB_CONNECT_TIMEOUT", cls.DB_CONNECT_TIMEOUT)
+            ),
+            ENABLE_METRICS=_as_bool(
+                os.environ.get("ENABLE_METRICS"), cls.ENABLE_METRICS
+            ),
+            API_KEY_ENABLED=_as_bool(
+                os.environ.get("API_KEY_ENABLED"), cls.API_KEY_ENABLED
+            ),
             API_KEY=os.environ.get("API_KEY"),
             CORS_ENABLED=_as_bool(os.environ.get("CORS_ENABLED"), cls.CORS_ENABLED),
             CORS_ORIGINS=_as_list(os.environ.get("CORS_ORIGINS")),
-            AUTO_APPLY_MIGRATIONS=_as_bool(os.environ.get("AUTO_APPLY_MIGRATIONS"), cls.AUTO_APPLY_MIGRATIONS),
+            AUTO_APPLY_MIGRATIONS=_as_bool(
+                os.environ.get("AUTO_APPLY_MIGRATIONS"), cls.AUTO_APPLY_MIGRATIONS
+            ),
         )
 
 

@@ -1,18 +1,22 @@
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 
 from app.api.v1.deps import get_db, get_request_context
-from app.infra.db.models import Node, Document, NodeDocument
 from app.api.v1.schemas.relationships import RelationshipOut
 from app.common.idempotency import IdempotencyService
-
+from app.infra.db.models import Document, Node, NodeDocument
 
 router = APIRouter()
 
 
-@router.post("/relationships", response_model=RelationshipOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/relationships",
+    response_model=RelationshipOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def bind_relationship(
     request: Request,
     node_id: int,
@@ -72,7 +76,9 @@ def unbind_relationship(
     db: Session = Depends(get_db),
     ctx=Depends(get_request_context),
 ):
-    stmt = select(NodeDocument).where(NodeDocument.node_id == node_id, NodeDocument.document_id == document_id)
+    stmt = select(NodeDocument).where(
+        NodeDocument.node_id == node_id, NodeDocument.document_id == document_id
+    )
     nd = db.execute(stmt).scalar_one_or_none()
     if not nd or nd.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Relation not found")

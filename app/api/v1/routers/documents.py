@@ -1,20 +1,26 @@
-from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
 
 from app.api.v1.deps import get_db, get_request_context
-from app.infra.db.models import Document
-from app.api.v1.schemas.documents import DocumentCreate, DocumentUpdate, DocumentOut, DocumentsPage
+from app.api.v1.schemas.documents import (
+    DocumentCreate,
+    DocumentOut,
+    DocumentsPage,
+    DocumentUpdate,
+)
 from app.common.idempotency import IdempotencyService
-
+from app.infra.db.models import Document
 
 router = APIRouter()
 
 
 # Using DocumentCreate/DocumentUpdate from app.api.v1.schemas.documents
 
-@router.post("/documents", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/documents", response_model=DocumentOut, status_code=status.HTTP_201_CREATED
+)
 def create_document(
     request: Request,
     payload: DocumentCreate,
@@ -25,7 +31,12 @@ def create_document(
     service = IdempotencyService(db)
 
     def executor():
-        doc = Document(title=payload.title, metadata_=payload.metadata or {}, created_by=user_id, updated_by=user_id)
+        doc = Document(
+            title=payload.title,
+            metadata_=payload.metadata or {},
+            created_by=user_id,
+            updated_by=user_id,
+        )
         db.add(doc)
         db.commit()
         db.refresh(doc)
@@ -76,7 +87,11 @@ def update_document(
 
     result = service.handle(
         request=request,
-        payload={"body": payload.model_dump(mode="json"), "resource_id": id, "user_id": user_id},
+        payload={
+            "body": payload.model_dump(mode="json"),
+            "resource_id": id,
+            "user_id": user_id,
+        },
         status_code=status.HTTP_200_OK,
         executor=executor,
     )
@@ -85,10 +100,14 @@ def update_document(
 
 
 @router.delete("/documents/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def soft_delete_document(id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
+def soft_delete_document(
+    id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
+):
     doc = db.get(Document, id)
     if not doc or doc.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Document not found or already deleted")
+        raise HTTPException(
+            status_code=404, detail="Document not found or already deleted"
+        )
     doc.deleted_at = func.now()
     doc.updated_by = ctx["user_id"]
     db.commit()
@@ -107,7 +126,11 @@ def list_documents(
     if not include_deleted:
         base_stmt = base_stmt.where(Document.deleted_at.is_(None))
         count_stmt = count_stmt.where(Document.deleted_at.is_(None))
-    base_stmt = base_stmt.order_by(Document.created_at.desc()).offset((page - 1) * size).limit(size)
+    base_stmt = (
+        base_stmt.order_by(Document.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
     items = list(db.execute(base_stmt).scalars())
     total = db.execute(count_stmt).scalar_one()
     return {"page": page, "size": size, "total": total, "items": items}

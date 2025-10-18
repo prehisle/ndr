@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app.common.config import get_settings
+from app.main import create_app
 
 
 def test_startup_runs_alembic_upgrade(monkeypatch):

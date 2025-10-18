@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.infra.db.models import IdempotencyRecord
 
-
 DEFAULT_EXPIRATION_HOURS = 24
 
 
@@ -43,7 +42,9 @@ class IdempotencyService:
         key = request.headers.get("Idempotency-Key")
         if not key:
             response = executor()
-            return IdempotencyResult(replay=False, status_code=status_code, response=response)
+            return IdempotencyResult(
+                replay=False, status_code=status_code, response=response
+            )
 
         payload_hash = self._hash_payload(request, payload)
         existing = self.db.execute(
@@ -68,8 +69,11 @@ class IdempotencyService:
             request_hash=payload_hash,
             status_code=status_code,
             response_body=encoded,
-            expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=DEFAULT_EXPIRATION_HOURS),
+            expires_at=datetime.now(tz=timezone.utc)
+            + timedelta(hours=DEFAULT_EXPIRATION_HOURS),
         )
         self.db.add(record)
         self.db.commit()
-        return IdempotencyResult(replay=False, status_code=status_code, response=response)
+        return IdempotencyResult(
+            replay=False, status_code=status_code, response=response
+        )

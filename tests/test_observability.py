@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.infra.observability.middleware import MetricsMiddleware
 from app.infra.observability.metrics import metrics_app
+from app.infra.observability.middleware import MetricsMiddleware
 
 
 def build_app() -> FastAPI:

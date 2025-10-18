@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from app.main import create_app
+from app.infra.db.models import Document
 from app.infra.db.session import get_session_factory
-from app.infra.db.models import Document, Node, NodeDocument
+from app.main import create_app
 
 
 def test_document_crud_and_soft_delete():
@@ -24,7 +24,11 @@ def test_document_crud_and_soft_delete():
     assert r.status_code == 200
 
     # Update
-    r = client.put(f"/api/v1/documents/{doc_id}", json={"title": "Spec B"}, headers={"X-User-Id": "u2"})
+    r = client.put(
+        f"/api/v1/documents/{doc_id}",
+        json={"title": "Spec B"},
+        headers={"X-User-Id": "u2"},
+    )
     assert r.status_code == 200
     assert r.json()["title"] == "Spec B"
     assert r.json()["updated_by"] == "u2"
@@ -134,9 +138,15 @@ def test_node_crud_and_children_and_relationships():
     assert any(n["id"] == grand_id for n in depth_two)
 
     # Bind document to child
-    dr = client.post("/api/v1/documents", json={"title": "Doc", "metadata": {}}, headers={"X-User-Id": "u1"})
+    dr = client.post(
+        "/api/v1/documents",
+        json={"title": "Doc", "metadata": {}},
+        headers={"X-User-Id": "u1"},
+    )
     doc_id = dr.json()["id"]
-    r = client.post(f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers={"X-User-Id": "u1"})
+    r = client.post(
+        f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers={"X-User-Id": "u1"}
+    )
     assert r.status_code == 200
 
     # List relationships by node
@@ -241,16 +251,22 @@ def test_node_path_and_sibling_name_uniqueness():
 
     # Soft-delete relationship and rebind reuse existing
     child_id = r_child.json()["id"]
-    doc_resp = client.post("/api/v1/documents", json={"title": "Doc", "metadata": {}}, headers=headers)
+    doc_resp = client.post(
+        "/api/v1/documents", json={"title": "Doc", "metadata": {}}, headers=headers
+    )
     doc_id = doc_resp.json()["id"]
     bind_resp = client.post(f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers)
     assert bind_resp.status_code == 200
 
-    unbind_resp = client.delete(f"/api/v1/nodes/{child_id}/unbind/{doc_id}", headers=headers)
+    unbind_resp = client.delete(
+        f"/api/v1/nodes/{child_id}/unbind/{doc_id}", headers=headers
+    )
     assert unbind_resp.status_code == 200
 
     # Rebind should reopen existing relation (not create duplicate)
-    rebind_resp = client.post(f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers)
+    rebind_resp = client.post(
+        f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers
+    )
     assert rebind_resp.status_code == 200
     rels = client.get(f"/api/v1/relationships?node_id={child_id}").json()
     assert len(rels) == 1

@@ -1,8 +1,9 @@
 import os
+
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app.common.config import get_settings
+from app.main import create_app
 
 
 def test_api_key_required_when_enabled():
@@ -16,7 +17,11 @@ def test_api_key_required_when_enabled():
     client = TestClient(app)
 
     # Missing key -> 401 on protected routes
-    r = client.post("/api/v1/documents", json={"title": "A", "metadata": {}}, headers={"X-User-Id": "u"})
+    r = client.post(
+        "/api/v1/documents",
+        json={"title": "A", "metadata": {}},
+        headers={"X-User-Id": "u"},
+    )
     assert r.status_code == 401
 
     # Wrong key -> 401

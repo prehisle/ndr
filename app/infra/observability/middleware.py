@@ -1,9 +1,11 @@
 import logging
 import time
 import uuid
-from starlette.middleware.base import BaseHTTPMiddleware
+
 from fastapi import Request
-from app.infra.observability.metrics import REQUESTS, LATENCY
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.infra.observability.metrics import LATENCY, REQUESTS
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):

@@ -1,24 +1,20 @@
-from fastapi import FastAPI
-from fastapi import Request, Depends, HTTPException
-from fastapi.responses import JSONResponse
+import uvicorn
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
 
-from app.common.config import get_settings
-from app.common.logging import setup_logging
+from app.api.v1.deps import get_db, require_api_key
 from app.api.v1.routers.documents import router as documents_router
 from app.api.v1.routers.nodes import router as nodes_router
 from app.api.v1.routers.relationships import router as relationships_router
-from app.infra.observability.middleware import MetricsMiddleware
-from app.infra.observability.metrics import metrics_app
-from app.api.v1.deps import get_db, require_api_key
-from sqlalchemy import text, inspect
-from sqlalchemy.exc import OperationalError
-
+from app.common.config import get_settings
+from app.common.logging import setup_logging
 from app.infra.db.alembic_support import get_head_revision, upgrade_to_head
-
+from app.infra.observability.metrics import metrics_app
+from app.infra.observability.middleware import MetricsMiddleware
 
 ERROR_CODE_BY_STATUS = {
     400: "bad_request",
@@ -61,7 +57,11 @@ def _resolve_error_code(status_code: int, override: str | None = None) -> str:
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging()
-    app = FastAPI(title="DMS Service", version="v4.0", description="Documents & Nodes relationships service (MVP)")
+    app = FastAPI(
+        title="DMS Service",
+        version="v4.0",
+        description="Documents & Nodes relationships service (MVP)",
+    )
 
     # Optional CORS
     if settings.CORS_ENABLED:
@@ -75,11 +75,22 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(
-        documents_router, prefix="/api/v1", tags=["documents"], dependencies=[Depends(require_api_key)]
+        documents_router,
+        prefix="/api/v1",
+        tags=["documents"],
+        dependencies=[Depends(require_api_key)],
     )
-    app.include_router(nodes_router, prefix="/api/v1", tags=["nodes"], dependencies=[Depends(require_api_key)])
     app.include_router(
-        relationships_router, prefix="/api/v1", tags=["relationships"], dependencies=[Depends(require_api_key)]
+        nodes_router,
+        prefix="/api/v1",
+        tags=["nodes"],
+        dependencies=[Depends(require_api_key)],
+    )
+    app.include_router(
+        relationships_router,
+        prefix="/api/v1",
+        tags=["relationships"],
+        dependencies=[Depends(require_api_key)],
     )
 
     # Metrics
@@ -110,7 +121,9 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    async def request_validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ):
         return JSONResponse(
             status_code=422,
             media_type="application/problem+json",
@@ -136,7 +149,12 @@ def create_app() -> FastAPI:
             db.execute(text("SELECT 1"))
             inspector = inspect(bind)
             tables = set(inspector.get_table_names())
-            required_tables = {"documents", "nodes", "node_documents", "idempotency_records"}
+            required_tables = {
+                "documents",
+                "nodes",
+                "node_documents",
+                "idempotency_records",
+            }
             missing = sorted(required_tables - tables)
             detail: dict[str, object] = {}
             if missing:
@@ -146,7 +164,9 @@ def create_app() -> FastAPI:
             if dialect == "postgresql":
                 head = get_head_revision()
                 try:
-                    current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+                    current = db.execute(
+                        text("SELECT version_num FROM alembic_version")
+                    ).scalar_one_or_none()
                 except Exception as exc:  # pragma: no cover - defensive path
                     detail["migrations"] = {
                         "status": "version_table_missing",
@@ -156,7 +176,11 @@ def create_app() -> FastAPI:
                     current = None
                 else:
                     if head and current != head:
-                        detail["migrations"] = {"status": "out_of_date", "current": current, "expected": head}
+                        detail["migrations"] = {
+                            "status": "out_of_date",
+                            "current": current,
+                            "expected": head,
+                        }
                 ltree_enabled = db.execute(
                     text("SELECT 1 FROM pg_extension WHERE extname = 'ltree'")
                 ).scalar_one_or_none()

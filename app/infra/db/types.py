@@ -1,19 +1,23 @@
 from __future__ import annotations
 
-from typing import Any
 import uuid
+from typing import Any
 
 from sqlalchemy import bindparam, cast
 from sqlalchemy.sql.elements import BindParameter
 from sqlalchemy.types import String, TypeDecorator, UserDefinedType
 
 try:  # Optional dependency; SQLAlchemy does not import ltree by default.
-    from sqlalchemy.dialects.postgresql import ltree as _pg_ltree  # type: ignore[attr-defined]
+    from sqlalchemy.dialects.postgresql import (
+        ltree as _pg_ltree,  # type: ignore[attr-defined]
+    )
 except ImportError:  # pragma: no cover - fallback when ltree dialect is unavailable
     _pg_ltree = None
 
 
-class _FallbackLtree(UserDefinedType):  # pragma: no cover - exercised via integration tests
+class _FallbackLtree(
+    UserDefinedType
+):  # pragma: no cover - exercised via integration tests
     def get_col_spec(self, **kw: Any) -> str:
         return "LTREE"
 
@@ -24,7 +28,9 @@ class _FallbackLtree(UserDefinedType):  # pragma: no cover - exercised via integ
         return lambda value: value
 
 
-class _FallbackLquery(UserDefinedType):  # pragma: no cover - exercised via integration tests
+class _FallbackLquery(
+    UserDefinedType
+):  # pragma: no cover - exercised via integration tests
     def get_col_spec(self, **kw: Any) -> str:
         return "LQUERY"
 

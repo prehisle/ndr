@@ -22,13 +22,15 @@ if not test_db_url:
     raise RuntimeError("Provide TEST_DB_URL or DB_URL for PostgreSQL-backed tests.")
 
 if not test_db_url.lower().startswith("postgresql"):
-    raise RuntimeError("Tests require a PostgreSQL connection string (postgresql+driver://...).")
+    raise RuntimeError(
+        "Tests require a PostgreSQL connection string (postgresql+driver://...)."
+    )
 
 os.environ["DB_URL"] = test_db_url
 os.environ.setdefault("AUTO_APPLY_MIGRATIONS", "true")
 get_settings.cache_clear()  # type: ignore[attr-defined]
-from app.infra.db.session import get_session_factory, reset_engine  # noqa: E402
 from app.infra.db.alembic_support import upgrade_to_head  # noqa: E402
+from app.infra.db.session import get_session_factory, reset_engine  # noqa: E402
 
 
 @contextmanager
@@ -57,7 +59,15 @@ def apply_migrations():
 @pytest.fixture(autouse=True)
 def cleanup_tables(apply_migrations):
     with _session_scope() as session:
-        session.execute(text("TRUNCATE idempotency_records, node_documents, nodes, documents RESTART IDENTITY CASCADE"))
+        session.execute(
+            text(
+                "TRUNCATE idempotency_records, node_documents, nodes, documents RESTART IDENTITY CASCADE"
+            )
+        )
     yield
     with _session_scope() as session:
-        session.execute(text("TRUNCATE idempotency_records, node_documents, nodes, documents RESTART IDENTITY CASCADE"))
+        session.execute(
+            text(
+                "TRUNCATE idempotency_records, node_documents, nodes, documents RESTART IDENTITY CASCADE"
+            )
+        )

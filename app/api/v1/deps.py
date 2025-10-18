@@ -1,7 +1,9 @@
 from typing import Generator
+
 from fastapi import Header, HTTPException
-from app.infra.db.session import get_session_factory
+
 from app.common.config import get_settings
+from app.infra.db.session import get_session_factory
 
 
 def get_db() -> Generator:
@@ -16,7 +18,10 @@ def get_db() -> Generator:
         db.close()
 
 
-def get_request_context(x_user_id: str | None = Header(default=None), x_request_id: str | None = Header(default=None)):
+def get_request_context(
+    x_user_id: str | None = Header(default=None),
+    x_request_id: str | None = Header(default=None),
+):
     return {"user_id": x_user_id or "system", "request_id": x_request_id}
 
 

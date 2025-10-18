@@ -17,13 +17,12 @@ from __future__ import annotations
 import argparse
 import random
 import statistics
+import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator
-
 from pathlib import Path
-import sys
+from typing import Iterator
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -34,6 +33,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, mapped_column
 from app.common.config import get_settings
 from app.infra.db.session import get_engine, reset_engine
 from app.infra.db.types import LtreeType
+
 
 class Base(DeclarativeBase):
     pass
@@ -111,12 +111,18 @@ def configure_index(engine: Engine, index_type: str) -> None:
                             )
                         )
                     else:
-                        conn.execute(text("CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIST(path)"))
+                        conn.execute(
+                            text(
+                                "CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIST(path)"
+                            )
+                        )
                     break
                 except Exception:  # pragma: no cover - fallback across PG versions
                     conn.rollback()
             else:
-                raise RuntimeError("Failed to create GIST index for ltree. Check extension installation.")
+                raise RuntimeError(
+                    "Failed to create GIST index for ltree. Check extension installation."
+                )
         elif index_type == "gin":
             for clause in ("gin_ltree_ops", "ltree_ops", None):
                 try:
@@ -128,7 +134,11 @@ def configure_index(engine: Engine, index_type: str) -> None:
                             )
                         )
                     else:
-                        conn.execute(text("CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIN(path)"))
+                        conn.execute(
+                            text(
+                                "CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIN(path)"
+                            )
+                        )
                     break
                 except Exception:  # pragma: no cover - fallback across PG versions
                     conn.rollback()
@@ -169,7 +179,9 @@ def run_explain_analyze(engine: Engine, path: str) -> tuple[float, float]:
     return cost, rows_examined
 
 
-def run_benchmark(engine: Engine, index_type: str, samples: int, breadth: int, depth: int) -> BenchmarkResult:
+def run_benchmark(
+    engine: Engine, index_type: str, samples: int, breadth: int, depth: int
+) -> BenchmarkResult:
     ensure_extensions(engine)
     rebuild_schema(engine)
 
@@ -183,7 +195,12 @@ def run_benchmark(engine: Engine, index_type: str, samples: int, breadth: int, d
     configure_index(engine, index_type)
 
     with engine.connect() as conn:
-        paths = [row[0] for row in conn.execute(text("SELECT path::text FROM benchmark_nodes WHERE nlevel(path) > 2"))]
+        paths = [
+            row[0]
+            for row in conn.execute(
+                text("SELECT path::text FROM benchmark_nodes WHERE nlevel(path) > 2")
+            )
+        ]
 
     chosen = random.sample(paths, min(samples, len(paths)))
     timings: list[float] = []
@@ -206,7 +223,11 @@ def run_benchmark(engine: Engine, index_type: str, samples: int, breadth: int, d
     return BenchmarkResult(
         index_type=index_type,
         query_ms_p50=statistics.median(timings),
-        query_ms_p95=statistics.quantiles(timings, n=20)[18] if len(timings) >= 20 else max(timings),
+        query_ms_p95=(
+            statistics.quantiles(timings, n=20)[18]
+            if len(timings) >= 20
+            else max(timings)
+        ),
         avg_plan_cost=sum(plan_costs) / len(plan_costs),
         sample_rows_examined=sum(rows_examined_list) / len(rows_examined_list),
     )
@@ -224,7 +245,9 @@ def print_results(results: list[BenchmarkResult]) -> None:
         ]
         for r in results
     ]
-    col_widths = [max(len(h), *(len(row[i]) for row in rows)) for i, h in enumerate(headers)]
+    col_widths = [
+        max(len(h), *(len(row[i]) for row in rows)) for i, h in enumerate(headers)
+    ]
     header_line = " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
     separator = "-+-".join("-" * col_widths[i] for i in range(len(headers)))
     print(header_line)
@@ -234,11 +257,21 @@ def print_results(results: list[BenchmarkResult]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark ltree subtree queries under different indexes.")
-    parser.add_argument("--index", choices=["gist", "gin"], action="append", required=False)
-    parser.add_argument("--samples", type=int, default=30, help="Number of subtree queries to sample.")
-    parser.add_argument("--breadth", type=int, default=5, help="Number of children per node.")
-    parser.add_argument("--depth", type=int, default=4, help="Depth of the generated tree.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark ltree subtree queries under different indexes."
+    )
+    parser.add_argument(
+        "--index", choices=["gist", "gin"], action="append", required=False
+    )
+    parser.add_argument(
+        "--samples", type=int, default=30, help="Number of subtree queries to sample."
+    )
+    parser.add_argument(
+        "--breadth", type=int, default=5, help="Number of children per node."
+    )
+    parser.add_argument(
+        "--depth", type=int, default=4, help="Depth of the generated tree."
+    )
     parser.add_argument(
         "--db-url",
         type=str,
@@ -264,7 +297,9 @@ def main() -> None:
     for index in args.index:
         print(f"Running benchmark for index: {index.upper()}")
         try:
-            result = run_benchmark(engine, index, args.samples, args.breadth, args.depth)
+            result = run_benchmark(
+                engine, index, args.samples, args.breadth, args.depth
+            )
         except RuntimeError as exc:
             print(f"  Skipped {index.upper()}: {exc}")
             continue

@@ -26,9 +26,13 @@ def get_engine() -> Engine:
             settings.DB_URL,
             pool_pre_ping=True,
             future=True,
-            connect_args=_build_connect_args(settings.DB_URL, settings.DB_CONNECT_TIMEOUT),
+            connect_args=_build_connect_args(
+                settings.DB_URL, settings.DB_CONNECT_TIMEOUT
+            ),
         )
-        _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        _SessionLocal = sessionmaker(
+            bind=_engine, autoflush=False, autocommit=False, expire_on_commit=False
+        )
     return _engine
 
 

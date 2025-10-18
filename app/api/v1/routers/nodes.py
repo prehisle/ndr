@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, text
 
 from app.api.v1.deps import get_db, get_request_context
-from app.infra.db.models import Node, Document, NodeDocument
-from app.api.v1.schemas.nodes import NodeCreate, NodeUpdate, NodeOut, NodesPage
+from app.api.v1.schemas.nodes import NodeCreate, NodeOut, NodesPage, NodeUpdate
 from app.common.idempotency import IdempotencyService
-from app.infra.db.types import make_lquery, as_ltree
-
+from app.infra.db.models import Document, Node, NodeDocument
+from app.infra.db.types import as_ltree, make_lquery
 
 router = APIRouter()
 
@@ -22,6 +21,7 @@ def _require_ltree(db: Session) -> None:
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="PostgreSQL with ltree extension is required",
         )
+
 
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
 def create_node(
@@ -41,12 +41,18 @@ def create_node(
             select(Node).where(Node.deleted_at.is_(None), Node.path == path)
         ).scalar_one_or_none()
         if conflict:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Node path already exists")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Node path already exists"
+            )
 
         # 同一父节点下 name 唯一
         siblings_stmt = select(Node).where(
             Node.deleted_at.is_(None),
-            Node.parent_path.is_(parent_path) if parent_path is None else Node.parent_path == parent_path,
+            (
+                Node.parent_path.is_(parent_path)
+                if parent_path is None
+                else Node.parent_path == parent_path
+            ),
             Node.name == payload.name,
         )
         sibling_conflict = db.execute(siblings_stmt).scalar_one_or_none()
@@ -162,7 +168,9 @@ def update_node(
             )
 
         # 目标路径构建
-        new_path = new_slug if new_parent_path is None else f"{new_parent_path}.{new_slug}"
+        new_path = (
+            new_slug if new_parent_path is None else f"{new_parent_path}.{new_slug}"
+        )
 
         # 校验路径唯一
         if new_path != node.path:
@@ -174,7 +182,10 @@ def update_node(
                 )
             ).scalar_one_or_none()
             if conflict:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Node path already exists")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Node path already exists",
+                )
 
         path_changed = new_path != node.path
 
@@ -217,7 +228,11 @@ def update_node(
 
     result = service.handle(
         request=request,
-        payload={"body": payload.model_dump(mode="json"), "resource_id": id, "user_id": user_id},
+        payload={
+            "body": payload.model_dump(mode="json"),
+            "resource_id": id,
+            "user_id": user_id,
+        },
         status_code=status.HTTP_200_OK,
         executor=executor,
     )
@@ -226,7 +241,9 @@ def update_node(
 
 
 @router.delete("/nodes/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def soft_delete_node(id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
+def soft_delete_node(
+    id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
+):
     node = db.get(Node, id)
     if not node or node.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Node not found or already deleted")
@@ -248,14 +265,22 @@ def list_nodes(
     if not include_deleted:
         base_stmt = base_stmt.where(Node.deleted_at.is_(None))
         count_stmt = count_stmt.where(Node.deleted_at.is_(None))
-    base_stmt = base_stmt.order_by(Node.created_at.desc()).offset((page - 1) * size).limit(size)
+    base_stmt = (
+        base_stmt.order_by(Node.created_at.desc()).offset((page - 1) * size).limit(size)
+    )
     items = list(db.execute(base_stmt).scalars())
     total = db.execute(count_stmt).scalar_one()
     return {"page": page, "size": size, "total": total, "items": items}
 
+
 # Restore relationship endpoints under nodes for compatibility
 @router.post("/nodes/{id}/bind/{doc_id}")
-def bind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
+def bind_document(
+    id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
     node = db.get(Node, id)
     doc = db.get(Document, doc_id)
     if not node or node.deleted_at is not None:
@@ -263,7 +288,9 @@ def bind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Depen
     if not doc or doc.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Document not found")
     user_id = ctx["user_id"]
-    exists_stmt = select(NodeDocument).where(NodeDocument.node_id == id, NodeDocument.document_id == doc_id)
+    exists_stmt = select(NodeDocument).where(
+        NodeDocument.node_id == id, NodeDocument.document_id == doc_id
+    )
     existing = db.execute(exists_stmt).scalar_one_or_none()
     if existing:
         if existing.deleted_at is None:
@@ -272,14 +299,24 @@ def bind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Depen
         existing.updated_by = user_id
         db.commit()
         return {"ok": True}
-    nd = NodeDocument(node_id=id, document_id=doc_id, created_by=user_id, updated_by=user_id)
+    nd = NodeDocument(
+        node_id=id, document_id=doc_id, created_by=user_id, updated_by=user_id
+    )
     db.add(nd)
     db.commit()
     return {"ok": True}
 
+
 @router.delete("/nodes/{id}/unbind/{doc_id}")
-def unbind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)):
-    stmt = select(NodeDocument).where(NodeDocument.node_id == id, NodeDocument.document_id == doc_id)
+def unbind_document(
+    id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    stmt = select(NodeDocument).where(
+        NodeDocument.node_id == id, NodeDocument.document_id == doc_id
+    )
     nd = db.execute(stmt).scalar_one_or_none()
     if not nd or nd.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Relation not found")
@@ -288,8 +325,11 @@ def unbind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Dep
     db.commit()
     return {"ok": True}
 
+
 @router.get("/nodes/{id}/children", response_model=list[NodeOut])
-def list_children(id: int, depth: int = Query(default=1, ge=1), db: Session = Depends(get_db)):
+def list_children(
+    id: int, depth: int = Query(default=1, ge=1), db: Session = Depends(get_db)
+):
     node = db.get(Node, id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")

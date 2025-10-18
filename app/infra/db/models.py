@@ -1,12 +1,23 @@
-from typing import Any
-from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
-from sqlalchemy import BigInteger, Text, JSON, ForeignKey, String, Integer, DateTime, func, Index, text
-from sqlalchemy.orm import relationship
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infra.db.base import Base, TimestampMixin
-from app.infra.db.types import LtreeType, HAS_POSTGRES_LTREE
+from app.infra.db.types import HAS_POSTGRES_LTREE, LtreeType
 
 METADATA_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
@@ -17,7 +28,9 @@ class Document(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     # SQLAlchemy Declarative 保留了 "metadata" 名称，这里使用 metadata_ 作为属性名，并映射到列名 "metadata"
-    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", METADATA_JSON_TYPE, default=dict, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", METADATA_JSON_TYPE, default=dict, nullable=False
+    )
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -26,7 +39,9 @@ class Document(Base, TimestampMixin):
 
 class Node(Base, TimestampMixin):
     __tablename__ = "nodes"
-    _path_index_kwargs: dict[str, Any] = {"postgresql_using": "gist"} if HAS_POSTGRES_LTREE else {}
+    _path_index_kwargs: dict[str, Any] = (
+        {"postgresql_using": "gist"} if HAS_POSTGRES_LTREE else {}
+    )
     __table_args__ = (
         # ltree child/ancestor queries rely on gist; fallback to btree when gist is unavailable.
         Index("ix_nodes_path_tree", "path", **_path_index_kwargs),
@@ -61,8 +76,12 @@ class Node(Base, TimestampMixin):
 class NodeDocument(Base, TimestampMixin):
     __tablename__ = "node_documents"
 
-    node_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("nodes.id"), primary_key=True)
-    document_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("documents.id"), primary_key=True)
+    node_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("nodes.id"), primary_key=True
+    )
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("documents.id"), primary_key=True
+    )
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -77,5 +96,9 @@ class IdempotencyRecord(Base):
     request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     response_body: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

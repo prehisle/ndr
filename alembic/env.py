@@ -4,8 +4,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context  # type: ignore[attr-defined]
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context  # type: ignore[attr-defined]
 
 # Ensure application modules are importable when Alembic runs standalone.
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +15,6 @@ if str(ROOT) not in sys.path:
 
 from app.common.config import get_settings  # noqa: E402
 from app.infra.db.base import Base  # noqa: E402
-
 
 config = context.config
 if config.config_file_name is not None:
