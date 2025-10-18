@@ -6,12 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.infra.db.models import Node
 from app.infra.db.session import get_session_factory
-from app.infra.db.types import HAS_POSTGRES_LTREE, as_ltree, make_lquery
-
-pytestmark = pytest.mark.skipif(
-    not HAS_POSTGRES_LTREE,
-    reason="ltree extension not available; skip ltree integration tests",
-)
+from app.infra.db.types import as_ltree, make_lquery
 
 
 @pytest.fixture()
