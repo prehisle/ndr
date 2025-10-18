@@ -41,11 +41,9 @@ def test_ltree_subtree_query_returns_only_descendants(session):
     session.add_all([root, child, grandchild, sibling_root])
     session.commit()
 
-    query = (
-        select(Node.path)
-        .where(as_ltree(Node.path).op("<@")(make_lquery("root.*{1,}")))
-        .order_by(Node.path)
-    )
+    query = select(Node.path).where(
+        as_ltree(Node.path).op("~")(make_lquery("root.*{1,}"))
+    ).order_by(Node.path)
     paths = [str(row) for row in session.execute(query).scalars()]
     assert paths == ["root.child", "root.child.grand"]
 
