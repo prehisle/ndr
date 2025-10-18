@@ -77,6 +77,16 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 200
     assert r.json()["path"] == "root.kid"
 
+    # Create grandchild under updated child path
+    r = client.post(
+        "/api/v1/nodes",
+        json={"name": "Grand", "slug": "grand", "parent_path": "root.kid"},
+        headers={"X-User-Id": "u1"},
+    )
+    assert r.status_code == 201
+    grand = r.json()
+    grand_id = grand["id"]
+
     # List nodes (exclude deleted)
     r = client.get("/api/v1/nodes?page=1&size=10")
     assert r.status_code == 200
@@ -89,6 +99,13 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 200
     children = r.json()
     assert any(n["id"] == child_id for n in children)
+    assert all(n["id"] != grand_id for n in children)
+
+    # Depth=2 should include grandchildren
+    r = client.get(f"/api/v1/nodes/{root_id}/children?depth=2")
+    assert r.status_code == 200
+    depth_two = r.json()
+    assert any(n["id"] == grand_id for n in depth_two)
 
     # Bind document to child
     dr = client.post("/api/v1/documents", json={"title": "Doc", "metadata": {}}, headers={"X-User-Id": "u1"})

@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ndr
+      POSTGRES_USER: ndr
+      POSTGRES_PASSWORD: ndr
+    ports:
+      - "9001:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      DB_URL: postgresql+psycopg2://ndr:ndr@postgres:5432/ndr
+      AUTO_APPLY_MIGRATIONS: "true"
+      ENABLE_METRICS: "true"
+      API_KEY_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9002:8000"
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  pgdata:

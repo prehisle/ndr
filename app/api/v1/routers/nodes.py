@@ -1,12 +1,18 @@
-from typing import Any, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select, func, cast
 
 from app.api.v1.deps import get_db, get_request_context
 from app.infra.db.models import Node, Document, NodeDocument
 from app.api.v1.schemas.nodes import NodeCreate, NodeUpdate, NodeOut, NodesPage
 from app.common.idempotency import IdempotencyService
+from app.infra.db.types import HAS_POSTGRES_LTREE
+
+try:  # Optional import; available when PostgreSQL ltree extras are installed.
+    from sqlalchemy.dialects.postgresql import LQUERY
+except ImportError:  # pragma: no cover - fallback when ltree extras missing
+    LQUERY = None
 
 
 router = APIRouter()
@@ -205,14 +211,36 @@ def unbind_document(id: int, doc_id: int, db: Session = Depends(get_db), ctx=Dep
 
 @router.get("/nodes/{id}/children", response_model=list[NodeOut])
 def list_children(id: int, depth: int = Query(default=1, ge=1), db: Session = Depends(get_db)):
-    # 简化实现：使用字符串前缀匹配模拟 ltree 子树查询
     node = db.get(Node, id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-    base = node.path
-    stmt = select(Node).where(Node.path.like(f"{base}.%"))
-    items = list(db.execute(stmt).scalars())
-    # 过滤最大深度（以点分层级）
-    max_level = base.count(".") + depth
-    items = [n for n in items if n.path.count(".") <= max_level]
+
+    bind = db.get_bind()
+    is_postgres = bind is not None and bind.dialect.name == "postgresql"
+
+    if (
+        is_postgres
+        and HAS_POSTGRES_LTREE
+        and LQUERY is not None
+    ):
+        pattern = f"{node.path}.*{{1,{depth}}}"
+        stmt = (
+            select(Node)
+            .where(Node.deleted_at.is_(None))
+            .where(Node.path.op("<@")(cast(pattern, LQUERY())))
+            .order_by(Node.path)
+        )
+        items = list(db.execute(stmt).scalars())
+    else:
+        base = node.path
+        stmt = (
+            select(Node)
+            .where(Node.deleted_at.is_(None))
+            .where(Node.path.like(f"{base}.%"))
+            .order_by(Node.path)
+        )
+        items = list(db.execute(stmt).scalars())
+        max_level = base.count(".") + depth
+        items = [n for n in items if n.path.count(".") <= max_level]
+
     return items
