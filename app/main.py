@@ -20,6 +20,44 @@ from sqlalchemy.exc import OperationalError
 from app.infra.db.alembic_support import get_head_revision, upgrade_to_head
 
 
+ERROR_CODE_BY_STATUS = {
+    400: "bad_request",
+    401: "unauthorized",
+    403: "forbidden",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    410: "gone",
+    412: "precondition_failed",
+    413: "payload_too_large",
+    415: "unsupported_media_type",
+    429: "too_many_requests",
+    500: "internal_error",
+    502: "bad_gateway",
+    503: "service_unavailable",
+}
+
+
+def _normalize_detail(detail):
+    if isinstance(detail, dict):
+        maybe_code = detail.get("error_code")
+        cleaned = {k: v for k, v in detail.items() if k != "error_code"}
+        if len(cleaned) == 1 and "message" in cleaned:
+            cleaned = cleaned["message"]
+        if not cleaned:
+            cleaned = None
+        return cleaned, maybe_code if isinstance(maybe_code, str) else None
+    return detail, None
+
+
+def _resolve_error_code(status_code: int, override: str | None = None) -> str:
+    if override:
+        return override
+    if status_code == 422:
+        return "validation_error"
+    return ERROR_CODE_BY_STATUS.get(status_code, "unknown_error")
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging()
@@ -56,6 +94,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
+        normalized_detail, code_override = _normalize_detail(exc.detail)
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",
@@ -63,7 +102,8 @@ def create_app() -> FastAPI:
                 "type": "about:blank",
                 "title": "HTTP Error",
                 "status": exc.status_code,
-                "detail": exc.detail,
+                "detail": normalized_detail,
+                "error_code": _resolve_error_code(exc.status_code, code_override),
                 "instance": str(request.url),
                 "request_id": request.headers.get("X-Request-Id"),
             },
@@ -79,6 +119,7 @@ def create_app() -> FastAPI:
                 "title": "Validation Error",
                 "status": 422,
                 "detail": exc.errors(),
+                "error_code": _resolve_error_code(422),
                 "instance": str(request.url),
                 "request_id": request.headers.get("X-Request-Id"),
             },

@@ -11,9 +11,10 @@ def test_http_exception_problem_json():
     assert r.status_code == 404
     assert r.headers.get("content-type", "").startswith("application/problem+json")
     body = r.json()
-    for key in ("type", "title", "status", "detail", "instance"):
+    for key in ("type", "title", "status", "detail", "instance", "error_code"):
         assert key in body
     assert body["status"] == 404
+    assert body["error_code"] == "not_found"
 
 
 def test_validation_error_problem_json():
@@ -25,4 +26,5 @@ def test_validation_error_problem_json():
     assert r.headers.get("content-type", "").startswith("application/problem+json")
     body = r.json()
     assert body.get("status") == 422
+    assert body.get("error_code") == "validation_error"
     assert isinstance(body.get("detail"), list)
