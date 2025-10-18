@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.infra.db.models import Node
 from app.infra.db.session import get_session_factory
-from app.infra.db.types import as_ltree, make_lquery
+from app.infra.db.types import HAS_POSTGRES_LTREE, as_ltree, make_lquery
+
+pytestmark = pytest.mark.skipif(
+    not HAS_POSTGRES_LTREE,
+    reason="ltree extension not available; skip ltree integration tests",
+)
 
 
 @pytest.fixture()
@@ -36,15 +41,12 @@ def test_ltree_subtree_query_returns_only_descendants(session):
     session.add_all([root, child, grandchild, sibling_root])
     session.commit()
 
-    stmt = text(
-        """
-        SELECT path::text
-        FROM nodes
-        WHERE path <@ CAST(:pattern AS lquery)
-        ORDER BY path
-        """
+    query = (
+        select(Node.path)
+        .where(as_ltree(Node.path).op("<@")(make_lquery("root.*{1,}")))
+        .order_by(Node.path)
     )
-    paths = [row[0] for row in session.execute(stmt, {"pattern": "root.*{1,}"})]
+    paths = [str(row) for row in session.execute(query).scalars()]
     assert paths == ["root.child", "root.child.grand"]
 
 
