@@ -17,6 +17,7 @@
 2. **本地开发（无需容器）**
 
    - 安装依赖：`pip install -r requirements.txt`
+   - 安装 Git 钩子：`pre-commit install`
    - 准备数据库：确保本地 PostgreSQL 可用，创建数据库并在 `.env.development` 中设置 `DB_URL`。
    - 运行迁移与服务：
      ```bash
@@ -41,8 +42,17 @@ pytest
 - `docs/`：技术方案、规划与当前状态文档
 - `tests/`：API 集成测试与启动验证
 
+## 代码规范
+
+项目使用 `pre-commit` 管理 ruff、black、isort、mypy 等校验。首次克隆后执行：
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
 ## 后续工作指引
 
 - 按照 `docs/03_当前状态.md` 中的建议，补齐节点移动的并发处理及基于 ltree 的子树查询与索引验证。
-- 引入 `pre-commit` 与 CI 配置，巩固代码质量基线。
+- 引入 CI 流水线与自动化脚本，巩固质量门槛。
 - 拆分 `api → app → domain` 分层，逐步丰富领域/仓储层的单元与集成测试。
