@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.infra.db.models import Node
@@ -36,14 +36,15 @@ def test_ltree_subtree_query_returns_only_descendants(session):
     session.add_all([root, child, grandchild, sibling_root])
     session.commit()
 
-    subtree_pattern = "root.*{1,}"
-    query = (
-        select(Node.path)
-        .where(as_ltree(Node.path).op("<@")(make_lquery(subtree_pattern)))
-        .order_by(Node.path)
+    stmt = text(
+        """
+        SELECT path::text
+        FROM nodes
+        WHERE path <@ CAST(:pattern AS lquery)
+        ORDER BY path
+        """
     )
-
-    paths = list(session.execute(query).scalars())
+    paths = [row[0] for row in session.execute(stmt, {"pattern": "root.*{1,}"})]
     assert paths == ["root.child", "root.child.grand"]
 
 
@@ -56,3 +57,4 @@ def test_ltree_path_uniqueness_enforced(session):
     session.add(duplicate)
     with pytest.raises(IntegrityError):
         session.commit()
+    session.rollback()
