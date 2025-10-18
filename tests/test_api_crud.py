@@ -54,7 +54,6 @@ def test_node_crud_and_children_and_relationships():
     )
     assert r.status_code == 201
     root = r.json()
-    root_id = root["id"]
     assert root["path"] == "root"
 
     # Create second root node to support later move

@@ -29,13 +29,14 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import Integer, Text, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, declarative_base, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Session, mapped_column
 
 from app.common.config import get_settings
 from app.infra.db.session import get_engine, reset_engine
 from app.infra.db.types import LtreeType
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 @dataclass
