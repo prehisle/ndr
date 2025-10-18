@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.infra.db.types import LtreeType
