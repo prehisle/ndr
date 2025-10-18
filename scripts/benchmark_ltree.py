@@ -72,6 +72,7 @@ def ensure_extensions(engine: Engine) -> None:
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS ltree"))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gin"))
         conn.commit()
 
 
@@ -99,12 +100,59 @@ def configure_index(engine: Engine, index_type: str) -> None:
     with engine.connect() as conn:
         conn.execute(text("DROP INDEX IF EXISTS ix_benchmark_nodes_path"))
         if index_type == "gist":
-            conn.execute(text("CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIST(path)"))
+            for clause in ("gist_ltree_ops", "ltree_ops", None):
+                try:
+                    if clause:
+                        conn.execute(
+                            text(
+                                f"CREATE INDEX ix_benchmark_nodes_path "
+                                f"ON benchmark_nodes USING GIST(path {clause})"
+                            )
+                        )
+                    else:
+                        conn.execute(text("CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIST(path)"))
+                    break
+                except Exception:  # pragma: no cover - fallback across PG versions
+                    conn.rollback()
+            else:
+                raise RuntimeError("Failed to create GIST index for ltree. Check extension installation.")
         elif index_type == "gin":
-            conn.execute(text("CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIN(path)"))
+            for clause in ("gin_ltree_ops", "ltree_ops", None):
+                try:
+                    if clause:
+                        conn.execute(
+                            text(
+                                f"CREATE INDEX ix_benchmark_nodes_path "
+                                f"ON benchmark_nodes USING GIN(path {clause})"
+                            )
+                        )
+                    else:
+                        conn.execute(text("CREATE INDEX ix_benchmark_nodes_path ON benchmark_nodes USING GIN(path)"))
+                    break
+                except Exception:  # pragma: no cover - fallback across PG versions
+                    conn.rollback()
+            else:
+                raise RuntimeError(
+                    "Failed to create GIN index for ltree. Ensure ltree/ltree_gin support is available."
+                )
         else:
             raise ValueError(f"Unsupported index type: {index_type}")
         conn.commit()
+
+
+def operator_class_available(engine: Engine, method: str) -> bool:
+    query = text(
+        """
+        SELECT 1
+        FROM pg_opclass opc
+        JOIN pg_am am ON am.oid = opc.opcmethod
+        WHERE am.amname = :method
+          AND opc.opcintype = 'ltree'::regtype
+        LIMIT 1
+        """
+    )
+    with engine.connect() as conn:
+        return conn.execute(query, {"method": method}).scalar_one_or_none() is not None
 
 
 def run_explain_analyze(engine: Engine, path: str) -> tuple[float, float]:
@@ -123,6 +171,13 @@ def run_explain_analyze(engine: Engine, path: str) -> tuple[float, float]:
 def run_benchmark(engine: Engine, index_type: str, samples: int, breadth: int, depth: int) -> BenchmarkResult:
     ensure_extensions(engine)
     rebuild_schema(engine)
+
+    if index_type == "gin" and not operator_class_available(engine, "gin"):
+        raise RuntimeError(
+            "GIN operator class for ltree is not available on this PostgreSQL build. "
+            "Re-run with --index gist or install ltree GIN support."
+        )
+
     seed_hierarchy(engine, breadth=breadth, depth=depth)
     configure_index(engine, index_type)
 
@@ -207,9 +262,16 @@ def main() -> None:
     results = []
     for index in args.index:
         print(f"Running benchmark for index: {index.upper()}")
-        result = run_benchmark(engine, index, args.samples, args.breadth, args.depth)
+        try:
+            result = run_benchmark(engine, index, args.samples, args.breadth, args.depth)
+        except RuntimeError as exc:
+            print(f"  Skipped {index.upper()}: {exc}")
+            continue
         results.append(result)
-    print_results(results)
+    if results:
+        print_results(results)
+    else:
+        print("No benchmark results were produced.")
 
 
 if __name__ == "__main__":

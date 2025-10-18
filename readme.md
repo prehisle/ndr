@@ -53,13 +53,18 @@ pre-commit run --all-files
 
 ## 性能与基准
 
-仓库提供 `scripts/benchmark_ltree.py` 用于对 GIST/GIN 索引下的子树查询进行基准测试：
+仓库提供 `scripts/benchmark_ltree.py` 用于对 GIST/GIN 索引下的子树查询进行基准测试（若 GIN 运算符类不可用会自动跳过）：
 
 ```bash
 .venv/bin/python scripts/benchmark_ltree.py --index gist --index gin --samples 30 --breadth 5 --depth 4
 ```
 
-> 运行前请确保目标 PostgreSQL 实例已启用 `ltree` 与 `btree_gist` 扩展，并在环境变量 `DB_URL` 中指向该实例。
+> 运行前请确保目标 PostgreSQL 实例已启用 `ltree`、`btree_gist` 与 `btree_gin` 扩展，并在环境变量 `DB_URL` 中指向该实例。部分版本可能缺少 ltree 的 GIN 支持，脚本会提示改用 GIST 并自动跳过 GIN。
+
+常用参数说明：
+- `--index gist` / `--index gin` 控制基准的索引类型，可重复指定（缺省会比较两者）。
+- `--samples` 控制随机选取的子树查询次数。
+- 如果 GIN 运算符类缺失，脚本会输出 skip 信息但继续执行其他指标。
 
 ## 后续工作指引
 
