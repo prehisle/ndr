@@ -23,6 +23,16 @@ METADATA_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Document(Base, TimestampMixin):
+    """Business document stored in JSON-friendly form.
+
+    Fields
+    -------
+    id : database primary key（bigint，自增）。
+    title : 文档标题，使用 `Text` 以兼容大文本。
+    metadata_ : JSON 元数据，映射到列名 `metadata`，用于存储扩展属性。
+    created_by / updated_by : 记录最近一次写入该文档的用户标识。
+    created_at / updated_at / deleted_at : 来自 `TimestampMixin`，管理审计与软删。
+    """
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -38,6 +48,18 @@ class Document(Base, TimestampMixin):
 
 
 class Node(Base, TimestampMixin):
+    """Tree node built on top of PostgreSQL ltree paths.
+
+    Fields
+    -------
+    id : 自增主键，唯一标识节点。
+    name : 节点的业务名称，用于展示。
+    slug : 路径片段（与父节点组合形成 `path`）。
+    parent_path : 父节点完整路径，根节点为 `None`。
+    path : 当前节点的完整 ltree 路径，用于祖先/子孙查询。
+    created_by / updated_by : 最近一次写入节点的用户。
+    created_at / updated_at / deleted_at : `TimestampMixin` 提供的审计时间戳。
+    """
     __tablename__ = "nodes"
     _path_index_kwargs: dict[str, Any] = (
         {"postgresql_using": "gist"} if HAS_POSTGRES_LTREE else {}
@@ -74,6 +96,14 @@ class Node(Base, TimestampMixin):
 
 
 class NodeDocument(Base, TimestampMixin):
+    """Association table between nodes and documents.
+
+    Fields
+    -------
+    node_id / document_id : 复合主键，指向关联的节点与文档。
+    created_by / updated_by : 记录关系的创建及最近修改来源。
+    created_at / updated_at / deleted_at : 继承自 `TimestampMixin` 的审计信息。
+    """
     __tablename__ = "node_documents"
 
     node_id: Mapped[int] = mapped_column(
@@ -90,6 +120,17 @@ class NodeDocument(Base, TimestampMixin):
 
 
 class IdempotencyRecord(Base):
+    """Persisted response for handling idempotent requests.
+
+    Fields
+    -------
+    key : Idempotency-Key 原值，用作主键。
+    request_hash : 请求方法 + 路径 + 载荷的哈希值，用于冲突检测。
+    status_code : 初次执行时返回的 HTTP 状态码。
+    response_body : 原始响应体（JSON 化后保存）。
+    created_at : 记录创建时间。
+    expires_at : 记录过期时间，可用于清理。
+    """
     __tablename__ = "idempotency_records"
 
     key: Mapped[str] = mapped_column(String(255), primary_key=True)
