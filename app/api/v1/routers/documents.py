@@ -11,6 +11,7 @@ from app.api.v1.schemas.documents import (
 from app.app.services import (
     DocumentCreateData,
     DocumentNotFoundError,
+    DocumentService,
     DocumentUpdateData,
     MissingUserError,
     get_service_bundle,

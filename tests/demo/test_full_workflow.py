@@ -118,3 +118,47 @@ def test_full_workflow_with_soft_delete_and_restore():
 
     rels = client.get(f"/api/v1/relationships?node_id={node_id}").json()
     assert any(rel["document_id"] == document_id for rel in rels)
+
+
+def test_query_documents_with_complex_metadata():
+    client = _client()
+    headers = {"X-User-Id": "author"}
+    payloads = [
+        {
+            "title": "Complex Doc A",
+            "metadata": {
+                "tags": ["finance", "quarterly"],
+                "attributes": {"region": "APAC", "score": 98.5},
+                "flags": {"reviewed": True, "archived": False},
+            },
+        },
+        {
+            "title": "Complex Doc B",
+            "metadata": {
+                "tags": ["engineering"],
+                "owner": {"name": "Alice", "id": 42},
+                "notes": [
+                    {"lang": "en", "text": "Ready for release"},
+                    {"lang": "es", "text": "Listo para lanzamiento"},
+                ],
+            },
+        },
+    ]
+
+    created_ids: list[int] = []
+    for payload in payloads:
+        resp = client.post("/api/v1/documents", json=payload, headers=headers)
+        assert resp.status_code == 201
+        created_ids.append(resp.json()["id"])
+
+    list_resp = client.get("/api/v1/documents", params={"page": 1, "size": 50})
+    assert list_resp.status_code == 200
+    listed = list_resp.json()["items"]
+    docs_by_id = {doc["id"]: doc for doc in listed if doc["id"] in created_ids}
+    assert set(created_ids).issubset(docs_by_id.keys())
+
+    for payload, doc_id in zip(payloads, created_ids):
+        doc = docs_by_id[doc_id]
+        assert doc["title"] == payload["title"]
+        assert doc["metadata"] == payload["metadata"]
+        assert "metadata_" not in doc
