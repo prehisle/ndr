@@ -47,7 +47,8 @@ pytest
 项目使用 `pre-commit` 管理 ruff、black、isort、mypy 等校验。首次克隆后执行：
 
 ```bash
-pre-commit install
+pip install pre-commit
+pre-commit install          # 安装 git hook，可选
 pre-commit run --all-files
 ```
 
