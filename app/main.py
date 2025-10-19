@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging()
     app = FastAPI(
-        title="DMS Service",
+        title="NDR Service",
         version="v4.0",
         description="Documents & Nodes relationships service (MVP)",
     )

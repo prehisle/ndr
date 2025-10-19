@@ -1,4 +1,4 @@
-# 通用资料管理微服务（DMS）
+# 通用资料管理微服务（NDR）
 
 本服务提供文档、节点以及两者关系的管理能力，基于 FastAPI + SQLAlchemy + PostgreSQL 搭建。
 
