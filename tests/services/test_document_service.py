@@ -70,3 +70,20 @@ def test_document_service_guards_and_not_found(session):
 
     with pytest.raises(DocumentNotFoundError):
         service.soft_delete_document(999, user_id="tester")
+
+
+def test_document_service_restore(session):
+    service = DocumentService(session)
+    created = service.create_document(
+        DocumentCreateData(title="Spec", metadata={}),
+        user_id="author",
+    )
+
+    service.soft_delete_document(created.id, user_id="deleter")
+    restored = service.restore_document(created.id, user_id="restorer")
+    assert restored.deleted_at is None
+    assert restored.updated_by == "restorer"
+
+    # 再次恢复应保持幂等
+    restored_again = service.restore_document(created.id, user_id="restorer")
+    assert restored_again.deleted_at is None

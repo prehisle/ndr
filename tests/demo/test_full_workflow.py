@@ -1,10 +1,4 @@
-from datetime import datetime, timezone
-
 from fastapi.testclient import TestClient
-from sqlalchemy import update
-
-from app.infra.db.models import Document, Node, NodeDocument
-from app.infra.db.session import get_session_factory
 from app.main import create_app
 
 
@@ -97,29 +91,18 @@ def test_full_workflow_with_soft_delete_and_restore():
     assert doc_deleted.status_code == 200
     assert doc_deleted.json()["deleted_at"] is not None
 
-    # --- 恢复软删（示例：直接通过数据库更新 deleted_at 为 NULL） ---
-    session_factory = get_session_factory()
-    with session_factory() as session:
-        now = datetime.now(timezone.utc)
-        session.execute(
-            update(Node)
-            .where(Node.id == node_id)
-            .values(deleted_at=None, updated_at=now, updated_by="restorer")
-        )
-        session.execute(
-            update(Document)
-            .where(Document.id == document_id)
-            .values(deleted_at=None, updated_at=now, updated_by="restorer")
-        )
-        session.execute(
-            update(NodeDocument)
-            .where(
-                NodeDocument.node_id == node_id,
-                NodeDocument.document_id == document_id,
-            )
-            .values(deleted_at=None, updated_at=now, updated_by="restorer")
-        )
-        session.commit()
+    # --- 使用官方 API 恢复 ---
+    restore_node = client.post(
+        f"/api/v1/nodes/{node_id}/restore",
+        headers={"X-User-Id": "restorer"},
+    )
+    assert restore_node.status_code == 200
+
+    restore_doc = client.post(
+        f"/api/v1/documents/{document_id}/restore",
+        headers={"X-User-Id": "restorer"},
+    )
+    assert restore_doc.status_code == 200
 
     # 重新绑定关系并验证恢复
     restore_bind = client.post(

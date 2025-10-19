@@ -83,3 +83,17 @@ class DocumentService(BaseService):
         self, *, page: int, size: int, include_deleted: bool = False
     ) -> tuple[list[Document], int]:
         return self._repo.paginate_documents(page, size, include_deleted)
+
+    def restore_document(self, document_id: int, *, user_id: str) -> Document:
+        user = self._ensure_user(user_id)
+        document = self._repo.get(document_id)
+        if not document:
+            raise DocumentNotFoundError("Document not found")
+        if document.deleted_at is None:
+            return document
+        document.deleted_at = None
+        document.updated_by = user
+        document.updated_at = datetime.now(timezone.utc)
+        self._commit()
+        self.session.refresh(document)
+        return document

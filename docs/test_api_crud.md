@@ -10,6 +10,7 @@
 | ---- | -------- | -------- |
 | `test_document_crud_and_soft_delete` | `/api/v1/documents` 的创建、查询、更新、软删除、软删除后的查询语义 | - 创建接口写入 `metadata`、`created_by`<br>- 更新接口变更标题并更新 `updated_by`<br>- 软删除后默认查询返回 404，`include_deleted=true` 时返回 200 |
 | `test_document_idempotency_key_reuses_response` | 文档创建的幂等性处理 | - 相同 `Idempotency-Key` 与请求体复用原响应<br>- 相同 Key 不同请求体返回 409<br>- 最终仅持久化一条文档记录 |
+| `test_document_crud_and_soft_delete`（恢复段） | `/api/v1/documents/{id}/restore` | - 软删后调用恢复接口重新激活文档 |
 
 ---
 
@@ -19,6 +20,7 @@
 | ---- | -------- | -------- |
 | `test_node_crud_and_children_and_relationships` | `/api/v1/nodes` 的创建、移动、子树路径自动同步；`/children` 子树查询；节点与文档的绑定/解绑以及跨聚合查询 | - 节点创建/更新后 `path` 与父级一致<br>- 调整父节点会级联更新子节点路径<br>- `/children?depth=` 控制层级<br>- `/subtree-documents` 返回（或移除）绑定文档<br>- 解绑后关系列表为空 |
 | `test_node_path_and_sibling_name_uniqueness` | 节点路径与同父名称约束；移动约束；关系软删重绑 | - 同层 slug 重复返回 409<br>- 禁止将节点移动到自有子树<br>- 同父同名拒绝，不同父可复用<br>- 解绑后再次绑定复用原关系记录 |
+| `test_node_crud_and_children_and_relationships`（恢复段） | `/api/v1/nodes/{id}/restore` | - 软删子节点后可通过恢复接口重新激活 |
 
 ---
 

@@ -115,6 +115,20 @@ def soft_delete_document(
     return None
 
 
+@router.post("/documents/{id}/restore", response_model=DocumentOut)
+def restore_document(
+    id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
+):
+    services = get_service_bundle(db)
+    document_service = services.document()
+    try:
+        return document_service.restore_document(id, user_id=ctx["user_id"])
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/documents", response_model=DocumentsPage)
 def list_documents(
     page: int = Query(default=1, ge=1),

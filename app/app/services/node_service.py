@@ -194,6 +194,27 @@ class NodeService(BaseService):
         self._repo.require_ltree()
         return list(self._repo.fetch_children(node.path, depth))
 
+    def restore_node(self, node_id: int, *, user_id: str) -> Node:
+        user = self._ensure_user(user_id)
+        node = self._repo.get(node_id)
+        if not node:
+            raise NodeNotFoundError("Node not found")
+        if node.deleted_at is None:
+            return node
+
+        # Ensure path/name constraints still valid before restoring
+        if self._repo.has_active_path(node.path, exclude_id=node.id):
+            raise NodeConflictError("path", "Node path already exists")
+        if self._repo.has_active_name(node.parent_path, node.name, exclude_id=node.id):
+            raise NodeConflictError("name", "Node name already exists under the same parent")
+
+        node.deleted_at = None
+        node.updated_by = user
+        node.updated_at = datetime.now(timezone.utc)
+        self._commit()
+        self.session.refresh(node)
+        return node
+
     def get_subtree_documents(
         self,
         node_id: int,

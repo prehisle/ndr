@@ -133,6 +133,22 @@ def soft_delete_node(
     return None
 
 
+@router.post("/nodes/{id}/restore", response_model=NodeOut)
+def restore_node(
+    id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
+):
+    services = get_service_bundle(db)
+    node_service = services.node()
+    try:
+        return node_service.restore_node(id, user_id=ctx["user_id"])
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except NodeConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/nodes", response_model=NodesPage)
 def list_nodes(
     page: int = Query(default=1, ge=1),

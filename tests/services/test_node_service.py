@@ -162,3 +162,21 @@ def test_node_service_requires_user_context(session):
             NodeUpdateData(name="Root2"),
             user_id="",
         )
+
+
+def test_node_service_restore(session):
+    service = NodeService(session)
+    node = service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None),
+        user_id="author",
+    )
+
+    service.soft_delete_node(node.id, user_id="deleter")
+
+    restored = service.restore_node(node.id, user_id="restorer")
+    assert restored.deleted_at is None
+    assert restored.updated_by == "restorer"
+
+    # 再次恢复保持幂等
+    restored_again = service.restore_node(node.id, user_id="restorer")
+    assert restored_again.deleted_at is None

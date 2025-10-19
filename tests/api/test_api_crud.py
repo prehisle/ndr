@@ -45,6 +45,14 @@ def test_document_crud_and_soft_delete():
     r = client.get(f"/api/v1/documents/{doc_id}?include_deleted=true")
     assert r.status_code == 200
 
+    # Restore
+    restore = client.post(
+        f"/api/v1/documents/{doc_id}/restore",
+        headers={"X-User-Id": "u4"},
+    )
+    assert restore.status_code == 200
+    assert client.get(f"/api/v1/documents/{doc_id}").status_code == 200
+
 
 def test_node_crud_and_children_and_relationships():
     app = create_app()
@@ -174,6 +182,21 @@ def test_node_crud_and_children_and_relationships():
     r = client.get(f"/api/v1/nodes/{other_root_id}/subtree-documents")
     assert r.status_code == 200
     assert r.json() == []
+
+    # Soft delete child node and restore
+    delete_child = client.delete(
+        f"/api/v1/nodes/{child_id}",
+        headers={"X-User-Id": "u5"},
+    )
+    assert delete_child.status_code == 204
+    assert client.get(f"/api/v1/nodes/{child_id}").status_code == 404
+
+    restore_child = client.post(
+        f"/api/v1/nodes/{child_id}/restore",
+        headers={"X-User-Id": "u6"},
+    )
+    assert restore_child.status_code == 200
+    assert client.get(f"/api/v1/nodes/{child_id}").status_code == 200
 
 
 def test_document_idempotency_key_reuses_response():
