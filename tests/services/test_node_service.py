@@ -42,9 +42,7 @@ def test_update_node_propagates_path_changes_to_descendants(session):
         user_id="u1",
     )
 
-    updated = service.update_node(
-        child.id, NodeUpdateData(slug="kid"), user_id="u2"
-    )
+    updated = service.update_node(child.id, NodeUpdateData(slug="kid"), user_id="u2")
     assert updated.path == "root.kid"
     assert service.get_node(grand.id).path == "root.kid.grand"
 
@@ -104,11 +102,13 @@ def test_get_subtree_documents_respects_deleted_flags(session):
         NodeCreateData(name="Root", slug="root", parent_path=None), user_id="author"
     )
     child = node_service.create_node(
-        NodeCreateData(name="Child", slug="child", parent_path=root.path), user_id="author"
+        NodeCreateData(name="Child", slug="child", parent_path=root.path),
+        user_id="author",
     )
 
     doc_root = document_service.create_document(
-        DocumentCreateData(title="Root Doc", metadata={"type": "root"}), user_id="author"
+        DocumentCreateData(title="Root Doc", metadata={"type": "root"}),
+        user_id="author",
     )
     doc_child = document_service.create_document(
         DocumentCreateData(title="Child Doc"), user_id="author"

@@ -30,9 +30,7 @@ class RelationshipService(BaseService):
         self._nodes = node_repository or NodeRepository(session)
         self._relationships = relationship_repository or RelationshipRepository(session)
 
-    def bind(
-        self, node_id: int, document_id: int, *, user_id: str
-    ) -> NodeDocument:
+    def bind(self, node_id: int, document_id: int, *, user_id: str) -> NodeDocument:
         user = self._ensure_user(user_id)
         node = self._nodes.get(node_id)
         if not node or node.deleted_at is not None:
@@ -63,9 +61,7 @@ class RelationshipService(BaseService):
         self.session.refresh(relation)
         return relation
 
-    def unbind(
-        self, node_id: int, document_id: int, *, user_id: str
-    ) -> None:
+    def unbind(self, node_id: int, document_id: int, *, user_id: str) -> None:
         user = self._ensure_user(user_id)
         relation = self._relationships.get(node_id, document_id)
         if not relation or relation.deleted_at is not None:
@@ -77,6 +73,4 @@ class RelationshipService(BaseService):
     def list(
         self, *, node_id: Optional[int] = None, document_id: Optional[int] = None
     ) -> list[NodeDocument]:
-        return self._relationships.list_active(
-            node_id=node_id, document_id=document_id
-        )
+        return self._relationships.list_active(node_id=node_id, document_id=document_id)

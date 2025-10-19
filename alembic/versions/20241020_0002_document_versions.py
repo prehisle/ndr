@@ -26,20 +26,37 @@ def upgrade() -> None:
 
     op.add_column(
         "documents",
-        sa.Column("content", json_type, nullable=False, server_default=content_server_default),
+        sa.Column(
+            "content", json_type, nullable=False, server_default=content_server_default
+        ),
     )
     op.alter_column("documents", "content", server_default=None)
 
     op.create_table(
         "document_versions",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("document_id", sa.BigInteger(), sa.ForeignKey("documents.id"), nullable=False),
+        sa.Column(
+            "document_id",
+            sa.BigInteger(),
+            sa.ForeignKey("documents.id"),
+            nullable=False,
+        ),
         sa.Column("version_number", sa.Integer(), nullable=False),
         sa.Column("operation", sa.String(length=32), nullable=False),
         sa.Column("source_version_number", sa.Integer(), nullable=True),
         sa.Column("snapshot_title", sa.Text(), nullable=False),
-        sa.Column("snapshot_metadata", json_type, nullable=False, server_default=metadata_server_default),
-        sa.Column("snapshot_content", json_type, nullable=False, server_default=content_server_default),
+        sa.Column(
+            "snapshot_metadata",
+            json_type,
+            nullable=False,
+            server_default=metadata_server_default,
+        ),
+        sa.Column(
+            "snapshot_content",
+            json_type,
+            nullable=False,
+            server_default=content_server_default,
+        ),
         sa.Column("change_summary", json_type, nullable=True),
         sa.Column("created_by", sa.Text(), nullable=False),
         sa.Column(
@@ -58,6 +75,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("uq_document_versions_document_version", table_name="document_versions")
+    op.drop_index(
+        "uq_document_versions_document_version", table_name="document_versions"
+    )
     op.drop_table("document_versions")
     op.drop_column("documents", "content")

@@ -32,8 +32,10 @@ class DocumentVersionRepository:
         return list(self._session.execute(stmt).scalars())
 
     def count_by_document(self, document_id: int) -> int:
-        stmt = select(func.count()).select_from(DocumentVersion).where(
-            DocumentVersion.document_id == document_id
+        stmt = (
+            select(func.count())
+            .select_from(DocumentVersion)
+            .where(DocumentVersion.document_id == document_id)
         )
         return self._session.execute(stmt).scalar_one()
 

@@ -8,9 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
 from app.domain.repositories import NodeRepository, RelationshipRepository
-from app.domain.repositories.node_repository import (
-    LtreeNotAvailableError,
-)
+from app.domain.repositories.node_repository import LtreeNotAvailableError
 from app.infra.db.models import Document, Node
 
 
@@ -113,7 +111,9 @@ class NodeService(BaseService):
                 if not parent_node:
                     raise ParentNodeNotFoundError("Parent node not found")
                 if parent_node.id == node.id:
-                    raise InvalidNodeOperationError("Cannot set a node as its own parent")
+                    raise InvalidNodeOperationError(
+                        "Cannot set a node as its own parent"
+                    )
                 if parent_node.path.startswith(f"{node.path}."):
                     raise InvalidNodeOperationError(
                         "Cannot move a node under its own subtree"
@@ -131,14 +131,14 @@ class NodeService(BaseService):
         new_slug = data.slug if data.slug is not None else node.slug
         new_parent_path = target_parent_path
 
-        if self._repo.has_active_name(
-            new_parent_path, new_name, exclude_id=node.id
-        ):
+        if self._repo.has_active_name(new_parent_path, new_name, exclude_id=node.id):
             raise NodeConflictError(
                 "name", "Node name already exists under the same parent"
             )
 
-        new_path = new_slug if new_parent_path is None else f"{new_parent_path}.{new_slug}"
+        new_path = (
+            new_slug if new_parent_path is None else f"{new_parent_path}.{new_slug}"
+        )
 
         if self._repo.has_active_path(new_path, exclude_id=node.id):
             raise NodeConflictError("path", "Node path already exists")
@@ -206,7 +206,9 @@ class NodeService(BaseService):
         if self._repo.has_active_path(node.path, exclude_id=node.id):
             raise NodeConflictError("path", "Node path already exists")
         if self._repo.has_active_name(node.parent_path, node.name, exclude_id=node.id):
-            raise NodeConflictError("name", "Node name already exists under the same parent")
+            raise NodeConflictError(
+                "name", "Node name already exists under the same parent"
+            )
 
         node.deleted_at = None
         node.updated_by = user

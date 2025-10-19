@@ -86,9 +86,7 @@ class NodeRepository:
         )
         return tuple(self._session.execute(stmt).scalars())
 
-    def fetch_subtree(
-        self, root_path: str, *, include_deleted: bool
-    ) -> Sequence[Node]:
+    def fetch_subtree(self, root_path: str, *, include_deleted: bool) -> Sequence[Node]:
         pattern = f"{root_path}.*{{1,}}"
         path_expr = as_ltree(Node.path)
         stmt = select(Node).where(

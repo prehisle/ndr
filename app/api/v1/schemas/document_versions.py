@@ -42,4 +42,3 @@ class DocumentVersionDiff(BaseModel):
     title: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     content: dict[str, Any] | None = None
-
