@@ -23,7 +23,6 @@ router = APIRouter()
 
 
 # Using NodeCreate/NodeUpdate from app.api.v1.schemas.nodes
-
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
 def create_node(
     request: Request,

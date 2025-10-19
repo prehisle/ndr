@@ -11,7 +11,11 @@ def test_document_crud_and_soft_delete():
     client = TestClient(app)
 
     # Create
-    payload = {"title": "Spec A", "metadata": {"type": "spec"}}
+    payload = {
+        "title": "Spec A",
+        "metadata": {"type": "spec"},
+        "content": {"body": "spec"},
+    }
     r = client.post("/api/v1/documents", json=payload, headers={"X-User-Id": "u1"})
     assert r.status_code == 201
     doc = r.json()
@@ -148,7 +152,7 @@ def test_node_crud_and_children_and_relationships():
     # Bind document to child
     dr = client.post(
         "/api/v1/documents",
-        json={"title": "Doc", "metadata": {}},
+        json={"title": "Doc", "metadata": {}, "content": {"body": "doc"}},
         headers={"X-User-Id": "u1"},
     )
     doc_id = dr.json()["id"]
@@ -199,12 +203,73 @@ def test_node_crud_and_children_and_relationships():
     assert client.get(f"/api/v1/nodes/{child_id}").status_code == 200
 
 
+def test_document_versions_api():
+    app = create_app()
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Versioned",
+            "metadata": {"stage": "draft"},
+            "content": {"body": "v1"},
+        },
+        headers={"X-User-Id": "author"},
+    )
+    assert create.status_code == 201
+    doc_id = create.json()["id"]
+
+    update = client.put(
+        f"/api/v1/documents/{doc_id}",
+        json={
+            "title": "Versioned v2",
+            "metadata": {"stage": "published", "approved": True},
+            "content": {"body": "v2"},
+        },
+        headers={"X-User-Id": "editor"},
+    )
+    assert update.status_code == 200
+
+    versions = client.get(f"/api/v1/documents/{doc_id}/versions")
+    assert versions.status_code == 200
+    data = versions.json()
+    assert data["total"] >= 2
+    numbers = {item["version_number"] for item in data["items"]}
+    assert numbers == {1, 2}
+
+    version_one = client.get(
+        f"/api/v1/documents/{doc_id}/versions/1",
+        params={"include_deleted_document": False},
+    )
+    assert version_one.status_code == 200
+    assert version_one.json()["title"] == "Versioned"
+
+    diff = client.get(
+        f"/api/v1/documents/{doc_id}/versions/1/diff",
+        params={"include_deleted_document": False},
+    )
+    assert diff.status_code == 200
+    diff_body = diff.json()
+    assert diff_body["metadata"]["added"]["approved"] is True
+
+    restore = client.post(
+        f"/api/v1/documents/{doc_id}/versions/1/restore",
+        headers={"X-User-Id": "restorer"},
+    )
+    assert restore.status_code == 200
+    assert restore.json()["title"] == "Versioned"
+
+
 def test_document_idempotency_key_reuses_response():
     app = create_app()
     client = TestClient(app)
 
     headers = {"X-User-Id": "u1", "Idempotency-Key": "doc-create-1"}
-    payload = {"title": "Spec C", "metadata": {"type": "spec"}}
+    payload = {
+        "title": "Spec C",
+        "metadata": {"type": "spec"},
+        "content": {"body": "spec"},
+    }
     r1 = client.post("/api/v1/documents", json=payload, headers=headers)
     assert r1.status_code == 201
     created = r1.json()
@@ -217,7 +282,11 @@ def test_document_idempotency_key_reuses_response():
     # 同一 Key 但不同内容 -> 409 冲突
     r3 = client.post(
         "/api/v1/documents",
-        json={"title": "Spec D", "metadata": {"type": "spec"}},
+        json={
+            "title": "Spec D",
+            "metadata": {"type": "spec"},
+            "content": {"body": "spec"},
+        },
         headers=headers,
     )
     assert r3.status_code == 409

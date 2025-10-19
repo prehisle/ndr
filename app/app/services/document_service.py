@@ -7,6 +7,10 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
+from app.app.services.document_version_service import (
+    DocumentVersionNotFoundError,
+    DocumentVersionService,
+)
 from app.domain.repositories import DocumentRepository
 from app.infra.db.models import Document
 
@@ -19,36 +23,51 @@ class DocumentNotFoundError(Exception):
 class DocumentCreateData:
     title: str
     metadata: Optional[dict[str, Any]] = None
+    content: Optional[dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
 class DocumentUpdateData:
     title: Optional[str] = None
     metadata: Optional[dict[str, Any]] = None
+    content: Optional[dict[str, Any]] = None
 
 
 class DocumentService(BaseService):
     """Application service orchestrating document lifecycle operations."""
 
-    def __init__(self, session: Session, repository: DocumentRepository | None = None):
+    def __init__(
+        self,
+        session: Session,
+        repository: DocumentRepository | None = None,
+        version_service: DocumentVersionService | None = None,
+    ):
         super().__init__(session)
         self._repo = repository or DocumentRepository(session)
+        self._versions = version_service or DocumentVersionService(session)
 
     def create_document(self, data: DocumentCreateData, *, user_id: str) -> Document:
         user = self._ensure_user(user_id)
         payload = dict(data.metadata) if data.metadata is not None else {}
+        content = dict(data.content) if data.content is not None else {}
         document = Document(
             title=data.title,
             metadata_=payload,
+            content=content,
             created_by=user,
             updated_by=user,
         )
         self.session.add(document)
+        self.session.flush()
+        snapshot = self._versions.build_snapshot_from_document(document)
+        self._versions.record_snapshot(snapshot, user_id=user, operation="create")
         self._commit()
         self.session.refresh(document)
         return document
 
-    def get_document(self, document_id: int, *, include_deleted: bool = False) -> Document:
+    def get_document(
+        self, document_id: int, *, include_deleted: bool = False
+    ) -> Document:
         document = self._repo.get(document_id)
         if not document or (document.deleted_at is not None and not include_deleted):
             raise DocumentNotFoundError("Document not found")
@@ -65,7 +84,12 @@ class DocumentService(BaseService):
             document.title = data.title
         if data.metadata is not None:
             document.metadata_ = dict(data.metadata)
+        if data.content is not None:
+            document.content = dict(data.content)
         document.updated_by = user
+        self.session.flush()
+        snapshot = self._versions.build_snapshot_from_document(document)
+        self._versions.record_snapshot(snapshot, user_id=user, operation="update")
         self._commit()
         self.session.refresh(document)
         return document
@@ -94,6 +118,51 @@ class DocumentService(BaseService):
         document.deleted_at = None
         document.updated_by = user
         document.updated_at = datetime.now(timezone.utc)
+        self.session.flush()
+        snapshot = self._versions.build_snapshot_from_document(document)
+        self._versions.record_snapshot(snapshot, user_id=user, operation="restore-soft")
+        self._commit()
+        self.session.refresh(document)
+        return document
+
+    def restore_document_version(
+        self, document_id: int, version_number: int, *, user_id: str
+    ) -> Document:
+        user = self._ensure_user(user_id)
+        document = self._repo.get(document_id)
+        if not document:
+            raise DocumentNotFoundError("Document not found")
+        try:
+            target_version = self._versions.get_version(document_id, version_number)
+        except DocumentVersionNotFoundError as exc:
+            raise DocumentNotFoundError(str(exc)) from exc
+
+        # Capture current state before mutation
+        current_snapshot = self._versions.build_snapshot_from_document(document)
+        self._versions.record_snapshot(
+            current_snapshot, user_id=user, operation="pre-restore"
+        )
+
+        target_snapshot = self._versions.snapshot_from_version(target_version)
+        document.title = target_snapshot.title
+        document.metadata_ = dict(target_snapshot.metadata)
+        document.content = dict(target_snapshot.content)
+        document.deleted_at = None
+        document.updated_by = user
+        document.updated_at = datetime.now(timezone.utc)
+
+        self.session.flush()
+        restored_snapshot = self._versions.build_snapshot_from_document(document)
+        change_summary = self._versions.diff_snapshots(
+            current_snapshot, target_snapshot
+        )
+        self._versions.record_snapshot(
+            restored_snapshot,
+            user_id=user,
+            operation="restore",
+            source_version_number=version_number,
+            change_summary=change_summary or None,
+        )
         self._commit()
         self.session.refresh(document)
         return document

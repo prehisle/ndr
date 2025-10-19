@@ -20,6 +20,7 @@ from app.infra.db.base import Base, TimestampMixin
 from app.infra.db.types import HAS_POSTGRES_LTREE, LtreeType
 
 METADATA_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
+CONTENT_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Document(Base, TimestampMixin):
@@ -33,6 +34,7 @@ class Document(Base, TimestampMixin):
     created_by / updated_by : 记录最近一次写入该文档的用户标识。
     created_at / updated_at / deleted_at : 来自 `TimestampMixin`，管理审计与软删。
     """
+
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -41,10 +43,19 @@ class Document(Base, TimestampMixin):
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", METADATA_JSON_TYPE, default=dict, nullable=False
     )
+    content: Mapped[dict[str, Any]] = mapped_column(
+        CONTENT_JSON_TYPE, default=dict, nullable=False
+    )
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
     nodes = relationship("NodeDocument", back_populates="document")
+    versions = relationship(
+        "DocumentVersion",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="DocumentVersion.version_number",
+    )
 
 
 class Node(Base, TimestampMixin):
@@ -60,6 +71,7 @@ class Node(Base, TimestampMixin):
     created_by / updated_by : 最近一次写入节点的用户。
     created_at / updated_at / deleted_at : `TimestampMixin` 提供的审计时间戳。
     """
+
     __tablename__ = "nodes"
     _path_index_kwargs: dict[str, Any] = (
         {"postgresql_using": "gist"} if HAS_POSTGRES_LTREE else {}
@@ -104,6 +116,7 @@ class NodeDocument(Base, TimestampMixin):
     created_by / updated_by : 记录关系的创建及最近修改来源。
     created_at / updated_at / deleted_at : 继承自 `TimestampMixin` 的审计信息。
     """
+
     __tablename__ = "node_documents"
 
     node_id: Mapped[int] = mapped_column(
@@ -119,6 +132,44 @@ class NodeDocument(Base, TimestampMixin):
     document = relationship("Document", back_populates="nodes")
 
 
+class DocumentVersion(Base):
+    """Historical snapshot of document data used for auditing and restore."""
+
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        Index(
+            "uq_document_versions_document_version",
+            "document_id",
+            "version_number",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("documents.id"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    snapshot_title: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_metadata: Mapped[dict[str, Any]] = mapped_column(
+        METADATA_JSON_TYPE, nullable=False, default=dict
+    )
+    snapshot_content: Mapped[dict[str, Any]] = mapped_column(
+        CONTENT_JSON_TYPE, nullable=False, default=dict
+    )
+    change_summary: Mapped[dict[str, Any] | None] = mapped_column(
+        CONTENT_JSON_TYPE, nullable=True
+    )
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    document = relationship("Document", back_populates="versions")
+
+
 class IdempotencyRecord(Base):
     """Persisted response for handling idempotent requests.
 
@@ -131,6 +182,7 @@ class IdempotencyRecord(Base):
     created_at : 记录创建时间。
     expires_at : 记录过期时间，可用于清理。
     """
+
     __tablename__ = "idempotency_records"
 
     key: Mapped[str] = mapped_column(String(255), primary_key=True)

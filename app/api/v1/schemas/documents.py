@@ -8,11 +8,13 @@ from pydantic.config import ConfigDict
 class DocumentCreate(BaseModel):
     title: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+    content: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentUpdate(BaseModel):
     title: str | None = None
     metadata: dict[str, Any] | None = None
+    content: dict[str, Any] | None = None
 
 
 class DocumentOut(BaseModel):
@@ -22,6 +24,7 @@ class DocumentOut(BaseModel):
     title: str
     # ORM 属性名为 metadata_，仅用于内部取值，不直接输出
     metadata_: dict[str, Any] = Field(default_factory=dict, exclude=True)
+    content: dict[str, Any] = Field(default_factory=dict)
     created_by: str
     updated_by: str
     created_at: datetime

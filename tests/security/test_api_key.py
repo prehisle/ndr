@@ -19,7 +19,7 @@ def test_api_key_required_when_enabled():
     # Missing key -> 401 on protected routes
     r = client.post(
         "/api/v1/documents",
-        json={"title": "A", "metadata": {}},
+        json={"title": "A", "metadata": {}, "content": {}},
         headers={"X-User-Id": "u"},
     )
     assert r.status_code == 401
@@ -27,7 +27,7 @@ def test_api_key_required_when_enabled():
     # Wrong key -> 401
     r = client.post(
         "/api/v1/documents",
-        json={"title": "A", "metadata": {}},
+        json={"title": "A", "metadata": {}, "content": {}},
         headers={"X-User-Id": "u", "X-API-Key": "wrong"},
     )
     assert r.status_code == 401
@@ -35,7 +35,7 @@ def test_api_key_required_when_enabled():
     # Correct key -> 201
     r = client.post(
         "/api/v1/documents",
-        json={"title": "A", "metadata": {}},
+        json={"title": "A", "metadata": {}, "content": {}},
         headers={"X-User-Id": "u", "X-API-Key": "secret-123"},
     )
     assert r.status_code == 201

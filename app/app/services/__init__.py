@@ -6,6 +6,11 @@ from .document_service import (
     DocumentService,
     DocumentUpdateData,
 )
+from .document_version_service import (
+    DocumentSnapshot,
+    DocumentVersionNotFoundError,
+    DocumentVersionService,
+)
 from .node_service import (
     InvalidNodeOperationError,
     NodeConflictError,
@@ -22,6 +27,9 @@ __all__ = [
     "DocumentCreateData",
     "DocumentUpdateData",
     "DocumentNotFoundError",
+    "DocumentVersionService",
+    "DocumentVersionNotFoundError",
+    "DocumentSnapshot",
     "BaseService",
     "ServiceError",
     "MissingUserError",

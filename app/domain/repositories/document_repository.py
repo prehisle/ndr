@@ -42,4 +42,3 @@ class DocumentRepository:
             stmt = stmt.where(Document.deleted_at.is_(None))
         stmt = stmt.order_by(Document.id)
         return list(self._session.execute(stmt).scalars())
-

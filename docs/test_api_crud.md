@@ -11,6 +11,7 @@
 | `test_document_crud_and_soft_delete` | `/api/v1/documents` 的创建、查询、更新、软删除、软删除后的查询语义 | - 创建接口写入 `metadata`、`created_by`<br>- 更新接口变更标题并更新 `updated_by`<br>- 软删除后默认查询返回 404，`include_deleted=true` 时返回 200 |
 | `test_document_idempotency_key_reuses_response` | 文档创建的幂等性处理 | - 相同 `Idempotency-Key` 与请求体复用原响应<br>- 相同 Key 不同请求体返回 409<br>- 最终仅持久化一条文档记录 |
 | `test_document_crud_and_soft_delete`（恢复段） | `/api/v1/documents/{id}/restore` | - 软删后调用恢复接口重新激活文档 |
+| `test_document_versions_api` | `/api/v1/documents/{id}/versions*` 相关版本历史 API（列表、详情、diff、恢复） | - 创建/更新文档自动落库快照<br>- 列表返回按版本号排序的数据<br>- diff 展示新增字段与内容变更<br>- 按指定版本恢复返回历史状态 |
 
 ---
 

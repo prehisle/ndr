@@ -26,6 +26,7 @@ def _document(session, title: str, user_id: str = "u1") -> Document:
     doc = Document(
         title=title,
         metadata_={},
+        content={},
         created_by=user_id,
         updated_by=user_id,
     )

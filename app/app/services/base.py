@@ -49,4 +49,3 @@ class BaseService:
         """Provide an explicit transaction boundary for composed use cases."""
         with self._session.begin():
             yield self._session
-
