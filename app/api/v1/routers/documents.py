@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, get_request_context
@@ -9,8 +8,14 @@ from app.api.v1.schemas.documents import (
     DocumentsPage,
     DocumentUpdate,
 )
+from app.app.services import (
+    DocumentCreateData,
+    DocumentNotFoundError,
+    DocumentUpdateData,
+    MissingUserError,
+    get_service_bundle,
+)
 from app.common.idempotency import IdempotencyService
-from app.infra.db.models import Document
 
 router = APIRouter()
 
@@ -29,18 +34,15 @@ def create_document(
 ):
     user_id = ctx["user_id"]
     service = IdempotencyService(db)
+    services = get_service_bundle(db)
+    document_service = services.document()
 
     def executor():
-        doc = Document(
-            title=payload.title,
-            metadata_=payload.metadata or {},
-            created_by=user_id,
-            updated_by=user_id,
-        )
-        db.add(doc)
-        db.commit()
-        db.refresh(doc)
-        return doc
+        data = DocumentCreateData(title=payload.title, metadata=payload.metadata)
+        try:
+            return document_service.create_document(data, user_id=user_id)
+        except MissingUserError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     result = service.handle(
         request=request,
@@ -54,10 +56,12 @@ def create_document(
 
 @router.get("/documents/{id}", response_model=DocumentOut)
 def get_document(id: int, db: Session = Depends(get_db), include_deleted: bool = False):
-    doc = db.get(Document, id)
-    if not doc or (doc.deleted_at is not None and not include_deleted):
-        raise HTTPException(status_code=404, detail="Document not found")
-    return doc
+    services = get_service_bundle(db)
+    document_service = services.document()
+    try:
+        return document_service.get_document(id, include_deleted=include_deleted)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.put("/documents/{id}", response_model=DocumentOut)
@@ -68,22 +72,19 @@ def update_document(
     db: Session = Depends(get_db),
     ctx=Depends(get_request_context),
 ):
-    doc = db.get(Document, id)
-    if not doc or doc.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Document not found")
-
     user_id = ctx["user_id"]
     service = IdempotencyService(db)
+    services = get_service_bundle(db)
+    document_service = services.document()
 
     def executor():
-        if payload.title is not None:
-            doc.title = payload.title
-        if payload.metadata is not None:
-            doc.metadata_ = payload.metadata
-        doc.updated_by = user_id
-        db.commit()
-        db.refresh(doc)
-        return doc
+        data = DocumentUpdateData(title=payload.title, metadata=payload.metadata)
+        try:
+            return document_service.update_document(id, data, user_id=user_id)
+        except DocumentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except MissingUserError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     result = service.handle(
         request=request,
@@ -103,14 +104,14 @@ def update_document(
 def soft_delete_document(
     id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
 ):
-    doc = db.get(Document, id)
-    if not doc or doc.deleted_at is not None:
-        raise HTTPException(
-            status_code=404, detail="Document not found or already deleted"
-        )
-    doc.deleted_at = func.now()
-    doc.updated_by = ctx["user_id"]
-    db.commit()
+    services = get_service_bundle(db)
+    document_service = services.document()
+    try:
+        document_service.soft_delete_document(id, user_id=ctx["user_id"])
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return None
 
 
@@ -121,16 +122,8 @@ def list_documents(
     include_deleted: bool = False,
     db: Session = Depends(get_db),
 ):
-    base_stmt = select(Document)
-    count_stmt = select(func.count()).select_from(Document)
-    if not include_deleted:
-        base_stmt = base_stmt.where(Document.deleted_at.is_(None))
-        count_stmt = count_stmt.where(Document.deleted_at.is_(None))
-    base_stmt = (
-        base_stmt.order_by(Document.created_at.desc())
-        .offset((page - 1) * size)
-        .limit(size)
+    document_service = DocumentService(db)
+    items, total = document_service.list_documents(
+        page=page, size=size, include_deleted=include_deleted
     )
-    items = list(db.execute(base_stmt).scalars())
-    total = db.execute(count_stmt).scalar_one()
     return {"page": page, "size": size, "total": total, "items": items}

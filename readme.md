@@ -40,7 +40,12 @@ pytest
 - `app/`：应用主代码（API、配置、基础设施）
 - `alembic/`：数据库迁移脚本
 - `docs/`：核心文档（《[项目规划与方案](docs/%E9%A1%B9%E7%9B%AE%E8%A7%84%E5%88%92%E4%B8%8E%E6%96%B9%E6%A1%88.md)》《[当前进度与待办](docs/%E5%BD%93%E5%89%8D%E8%BF%9B%E5%BA%A6%E4%B8%8E%E5%BE%85%E5%8A%9E.md)》）
-- `tests/`：API 集成测试与启动验证
+- `tests/api/`：API 集成与协议一致性测试
+- `tests/app/`：应用启动、观测性等集成测试
+- `tests/db/`：数据库与仓储相关验证
+- `tests/security/`：安全开关、鉴权行为测试
+- `tests/services/`：应用/领域服务单元测试
+- `tests/demo/`：最小示例（便于本地验收或教学）
 
 ## 代码规范
 

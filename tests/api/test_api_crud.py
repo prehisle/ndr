@@ -149,6 +149,12 @@ def test_node_crud_and_children_and_relationships():
     )
     assert r.status_code == 200
 
+    # Subtree documents from other_root should include the bound document
+    r = client.get(f"/api/v1/nodes/{other_root_id}/subtree-documents")
+    assert r.status_code == 200
+    subtree_docs = r.json()
+    assert any(d["id"] == doc_id for d in subtree_docs)
+
     # List relationships by node
     r = client.get(f"/api/v1/relationships?node_id={child_id}")
     assert r.status_code == 200
@@ -161,6 +167,11 @@ def test_node_crud_and_children_and_relationships():
 
     # List relationships after unbind -> empty
     r = client.get(f"/api/v1/relationships?node_id={child_id}")
+    assert r.status_code == 200
+    assert r.json() == []
+
+    # Subtree documents after unbind should be empty
+    r = client.get(f"/api/v1/nodes/{other_root_id}/subtree-documents")
     assert r.status_code == 200
     assert r.json() == []
 
