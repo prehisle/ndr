@@ -2,7 +2,13 @@ import os
 import uuid
 from typing import Dict
 
+import pytest
 import requests
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_REMOTE_REQUESTS_TEST") != "true",
+    reason="skip remote workflow unless RUN_REMOTE_REQUESTS_TEST=true",
+)
 
 
 def _base_url() -> str:
