@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
@@ -18,7 +19,12 @@ def upgrade() -> None:
         sa.Column("parent_id", sa.BigInteger(), nullable=True),
     )
     op.create_foreign_key(
-        "fk_nodes_parent_id", "nodes", "nodes", ["parent_id"], ["id"], ondelete="SET NULL"
+        "fk_nodes_parent_id",
+        "nodes",
+        "nodes",
+        ["parent_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
     op.create_index("ix_nodes_parent_id", "nodes", ["parent_id"])
 

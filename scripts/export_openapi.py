@@ -4,9 +4,7 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
-
 
 from app.main import create_app  # noqa: E402
 

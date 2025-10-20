@@ -149,6 +149,7 @@ def test_reorder_root_nodes(session):
     assert [node.id for node in reordered][:3] == [root_c.id, root_a.id, root_b.id]
     assert [node.position for node in reordered][:3] == [0, 1, 2]
 
+
 def test_create_node_requires_existing_parent_when_specified(session):
     service = NodeService(session)
     with pytest.raises(ParentNodeNotFoundError):
@@ -156,7 +157,6 @@ def test_create_node_requires_existing_parent_when_specified(session):
             NodeCreateData(name="Orphan", slug="orphan", parent_path="missing"),
             user_id="u1",
         )
-
 
 
 def test_soft_delete_node_requires_active_record(session):

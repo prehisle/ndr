@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
