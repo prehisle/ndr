@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-ENV_FILE = Path(".env.development")
+ENV_FILE = Path(".env")
 
 
 def _load_env_file() -> None:

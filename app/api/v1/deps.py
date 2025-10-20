@@ -1,3 +1,4 @@
+import logging
 from typing import Generator
 
 from fastapi import Header, HTTPException
@@ -44,4 +45,12 @@ def require_admin_key(x_admin_key: str | None = Header(default=None)) -> None:
     if not admin_key:
         raise HTTPException(status_code=503, detail="Permanent delete is disabled")
     if x_admin_key != admin_key:
+        logger = logging.getLogger("http")
+        preview = "<missing>"
+        if x_admin_key:
+            preview = f"{x_admin_key[:4]}***"
+        logger.warning(
+            "admin_key_mismatch admin_key_preview=%s",
+            preview,
+        )
         raise HTTPException(status_code=403, detail="Forbidden")
