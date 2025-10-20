@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db, get_request_context
+from app.api.v1.deps import get_db, get_request_context, require_admin_key
 from app.api.v1.schemas.document_versions import (
     DocumentVersionDiff,
     DocumentVersionOut,
@@ -122,6 +122,27 @@ def soft_delete_document(
     document_service = services.document()
     try:
         document_service.soft_delete_document(id, user_id=ctx["user_id"])
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return None
+
+
+@router.delete(
+    "/documents/{id}/purge",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin_key)],
+)
+def purge_document(
+    id: int,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    services = get_service_bundle(db)
+    document_service = services.document()
+    try:
+        document_service.purge_document(id, user_id=ctx["user_id"])
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except MissingUserError as exc:

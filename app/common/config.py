@@ -41,6 +41,7 @@ class Settings:
     ENABLE_METRICS: bool = True
     API_KEY_ENABLED: bool = False
     API_KEY: str | None = None
+    DESTRUCTIVE_API_KEY: str | None = None
     CORS_ENABLED: bool = False
     CORS_ORIGINS: list[str] = field(default_factory=list)
     AUTO_APPLY_MIGRATIONS: bool = True
@@ -68,6 +69,7 @@ class Settings:
                 os.environ.get("API_KEY_ENABLED"), cls.API_KEY_ENABLED
             ),
             API_KEY=os.environ.get("API_KEY"),
+            DESTRUCTIVE_API_KEY=os.environ.get("DESTRUCTIVE_API_KEY"),
             CORS_ENABLED=_as_bool(os.environ.get("CORS_ENABLED"), cls.CORS_ENABLED),
             CORS_ORIGINS=_as_list(os.environ.get("CORS_ORIGINS")),
             AUTO_APPLY_MIGRATIONS=_as_bool(

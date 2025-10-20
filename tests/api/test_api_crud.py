@@ -278,6 +278,84 @@ def test_create_node_with_missing_parent_returns_404():
     assert response.status_code == 404
 
 
+def test_permanent_delete_requires_admin_key():
+    app = create_app()
+    client = TestClient(app)
+
+    doc_resp = client.post(
+        "/api/v1/documents",
+        json={"title": "Doc", "metadata": {}, "content": {}},
+        headers={"X-User-Id": "author"},
+    )
+    assert doc_resp.status_code == 201
+    document_id = doc_resp.json()["id"]
+
+    node_resp = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers={"X-User-Id": "author"},
+    )
+    assert node_resp.status_code == 201
+    node_id = node_resp.json()["id"]
+
+    soft_delete_doc = client.delete(
+        f"/api/v1/documents/{document_id}",
+        headers={"X-User-Id": "deleter"},
+    )
+    assert soft_delete_doc.status_code == 204
+
+    soft_delete_node = client.delete(
+        f"/api/v1/nodes/{node_id}",
+        headers={"X-User-Id": "deleter"},
+    )
+    assert soft_delete_node.status_code == 204
+
+    # Missing admin key -> forbidden
+    assert (
+        client.delete(
+            f"/api/v1/documents/{document_id}/purge",
+            headers={"X-User-Id": "admin"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(
+            f"/api/v1/nodes/{node_id}/purge",
+            headers={"X-User-Id": "admin"},
+        ).status_code
+        == 403
+    )
+
+    admin_headers = {"X-User-Id": "admin", "X-Admin-Key": "admin-secret"}
+    assert (
+        client.delete(
+            f"/api/v1/documents/{document_id}/purge", headers=admin_headers
+        ).status_code
+        == 204
+    )
+    assert (
+        client.delete(
+            f"/api/v1/nodes/{node_id}/purge", headers=admin_headers
+        ).status_code
+        == 204
+    )
+
+    assert (
+        client.get(
+            f"/api/v1/documents/{document_id}?include_deleted=true",
+            headers={"X-User-Id": "auditor"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/nodes/{node_id}?include_deleted=true",
+            headers={"X-User-Id": "auditor"},
+        ).status_code
+        == 404
+    )
+
+
 def test_document_versions_api():
     app = create_app()
     client = TestClient(app)

@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
 from app.domain.repositories import NodeRepository, RelationshipRepository
 from app.domain.repositories.node_repository import LtreeNotAvailableError
-from app.infra.db.models import Document, Node
+from app.infra.db.models import Document, Node, NodeDocument
 
 
 class NodeNotFoundError(Exception):
@@ -217,6 +218,37 @@ class NodeService(BaseService):
         node.deleted_at = datetime.now(timezone.utc)
         node.updated_by = user
         self._repo.normalize_positions(parent_id)
+        self._commit()
+
+    def purge_node(self, node_id: int, *, user_id: str) -> None:
+        self._ensure_user(user_id)
+        node = self._repo.get(node_id)
+        if not node:
+            raise NodeNotFoundError("Node not found")
+        if node.deleted_at is None:
+            raise InvalidNodeOperationError(
+                "Node must be soft-deleted before permanent removal"
+            )
+
+        subtree = list(self._repo.fetch_subtree(node.path, include_deleted=True))
+        nodes_to_remove = {node.id}
+        node_map = {node.id: node}
+        for descendant in subtree:
+            nodes_to_remove.add(descendant.id)
+            node_map.setdefault(descendant.id, descendant)
+
+        if nodes_to_remove:
+            self.session.execute(
+                delete(NodeDocument).where(NodeDocument.node_id.in_(nodes_to_remove))
+            )
+            for node_id_to_delete in nodes_to_remove:
+                target = node_map.get(node_id_to_delete)
+                if target is None:
+                    target = self._repo.get(node_id_to_delete)
+                if target is not None:
+                    self.session.delete(target)
+
+        self._repo.normalize_positions(node.parent_id)
         self._commit()
 
     def reorder_children(self, data: NodeReorderData, *, user_id: str) -> list[Node]:

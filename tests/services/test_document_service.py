@@ -9,6 +9,9 @@ from app.app.services import (
     DocumentUpdateData,
     DocumentVersionService,
     MissingUserError,
+    NodeCreateData,
+    NodeService,
+    RelationshipService,
 )
 from app.infra.db.session import get_session_factory
 
@@ -139,3 +142,28 @@ def test_document_version_history_and_restore(session):
     assert restored.title == "Versioned Spec"
     assert restored.metadata_ == {"stage": "draft"}
     assert restored.content == {"body": "v1"}
+
+
+def test_purge_document_requires_soft_delete(session):
+    document_service = DocumentService(session)
+    node_service = NodeService(session)
+    relationship_service = RelationshipService(session)
+
+    document = document_service.create_document(
+        DocumentCreateData(title="Doc", metadata={}, content={}),
+        user_id="owner",
+    )
+    node = node_service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None), user_id="owner"
+    )
+    relationship_service.bind(node.id, document.id, user_id="owner")
+
+    with pytest.raises(DocumentNotFoundError):
+        document_service.purge_document(document.id, user_id="admin")
+
+    document_service.soft_delete_document(document.id, user_id="deleter")
+    document_service.purge_document(document.id, user_id="admin")
+
+    with pytest.raises(DocumentNotFoundError):
+        document_service.get_document(document.id, include_deleted=True)
+    assert relationship_service.list(document_id=document.id) == []

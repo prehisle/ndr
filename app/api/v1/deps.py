@@ -31,3 +31,15 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         api_key_expected = getattr(settings, "API_KEY", None)
         if not x_api_key or (api_key_expected and x_api_key != api_key_expected):
             raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def require_admin_key(x_admin_key: str | None = Header(default=None)) -> None:
+    settings = get_settings()
+    admin_key = getattr(settings, "DESTRUCTIVE_API_KEY", None)
+    if not admin_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Permanent delete is disabled",
+        )
+    if x_admin_key != admin_key:
+        raise HTTPException(status_code=403, detail="Forbidden")

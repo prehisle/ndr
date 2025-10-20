@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
@@ -12,7 +13,7 @@ from app.app.services.document_version_service import (
     DocumentVersionService,
 )
 from app.domain.repositories import DocumentRepository
-from app.infra.db.models import Document
+from app.infra.db.models import Document, NodeDocument
 
 
 class DocumentNotFoundError(Exception):
@@ -124,6 +125,22 @@ class DocumentService(BaseService):
         self._commit()
         self.session.refresh(document)
         return document
+
+    def purge_document(self, document_id: int, *, user_id: str) -> None:
+        self._ensure_user(user_id)
+        document = self._repo.get(document_id)
+        if not document:
+            raise DocumentNotFoundError("Document not found")
+        if document.deleted_at is None:
+            raise DocumentNotFoundError(
+                "Document must be soft-deleted before permanent removal"
+            )
+
+        self.session.execute(
+            delete(NodeDocument).where(NodeDocument.document_id == document_id)
+        )
+        self.session.delete(document)
+        self._commit()
 
     def restore_document_version(
         self, document_id: int, version_number: int, *, user_id: str

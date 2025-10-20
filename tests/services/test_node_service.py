@@ -5,6 +5,7 @@ import pytest
 from app.app.services import (
     DocumentCreateData,
     DocumentService,
+    InvalidNodeOperationError,
     MissingUserError,
     NodeConflictError,
     NodeCreateData,
@@ -148,6 +149,35 @@ def test_reorder_root_nodes(session):
     )
     assert [node.id for node in reordered][:3] == [root_c.id, root_a.id, root_b.id]
     assert [node.position for node in reordered][:3] == [0, 1, 2]
+
+
+def test_purge_node_requires_soft_delete(session):
+    node_service = NodeService(session)
+    document_service = DocumentService(session)
+    relationship_service = RelationshipService(session)
+
+    root = node_service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None), user_id="owner"
+    )
+    child = node_service.create_node(
+        NodeCreateData(name="Child", slug="child", parent_path=root.path),
+        user_id="owner",
+    )
+    document = document_service.create_document(
+        DocumentCreateData(title="Doc", metadata={}, content={}),
+        user_id="owner",
+    )
+    relationship_service.bind(child.id, document.id, user_id="owner")
+
+    with pytest.raises(InvalidNodeOperationError):
+        node_service.purge_node(child.id, user_id="admin")
+
+    node_service.soft_delete_node(child.id, user_id="deleter")
+    node_service.purge_node(child.id, user_id="admin")
+
+    with pytest.raises(NodeNotFoundError):
+        node_service.get_node(child.id, include_deleted=True)
+    assert relationship_service.list(node_id=child.id) == []
 
 
 def test_create_node_requires_existing_parent_when_specified(session):

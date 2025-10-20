@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db, get_request_context
+from app.api.v1.deps import get_db, get_request_context, require_admin_key
 from app.api.v1.schemas.documents import DocumentOut
 from app.api.v1.schemas.nodes import (
     NodeCreate,
@@ -136,6 +136,29 @@ def soft_delete_node(
         node_service.soft_delete_node(id, user_id=ctx["user_id"])
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return None
+
+
+@router.delete(
+    "/nodes/{id}/purge",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin_key)],
+)
+def purge_node(
+    id: int,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    services = get_service_bundle(db)
+    node_service = services.node()
+    try:
+        node_service.purge_node(id, user_id=ctx["user_id"])
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidNodeOperationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except MissingUserError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return None
