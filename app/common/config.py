@@ -45,6 +45,7 @@ class Settings:
     CORS_ENABLED: bool = False
     CORS_ORIGINS: list[str] = field(default_factory=list)
     AUTO_APPLY_MIGRATIONS: bool = True
+    TRACE_HTTP: bool = False
 
     def __post_init__(self) -> None:
         db_scheme = self.DB_URL.split(":", 1)[0].lower()
@@ -75,6 +76,7 @@ class Settings:
             AUTO_APPLY_MIGRATIONS=_as_bool(
                 os.environ.get("AUTO_APPLY_MIGRATIONS"), cls.AUTO_APPLY_MIGRATIONS
             ),
+            TRACE_HTTP=_as_bool(os.environ.get("TRACE_HTTP"), cls.TRACE_HTTP),
         )
 
 

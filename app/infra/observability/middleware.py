@@ -4,7 +4,9 @@ import uuid
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.concurrency import iterate_in_threadpool
 
+from app.common.config import get_settings
 from app.infra.observability.metrics import LATENCY, REQUESTS
 
 
@@ -20,6 +22,27 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             client_ip = client.host
         else:
             client_ip = None
+
+        trace_http = get_settings().TRACE_HTTP
+        request_body: str | None = None
+        if trace_http:
+            try:
+                raw_body = await request.body()
+                if raw_body:
+                    request_body = raw_body.decode("utf-8", errors="replace")
+                    if len(request_body) > 2048:
+                        request_body = request_body[:2048] + "...<truncated>"
+
+                    async def receive():
+                        return {
+                            "type": "http.request",
+                            "body": raw_body,
+                            "more_body": False,
+                        }
+
+                    request._receive = receive  # type: ignore[attr-defined]
+            except Exception:
+                request_body = "<unavailable>"
 
         try:
             response = await call_next(request)
@@ -89,6 +112,42 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             "request method=%s route=%s status=%s duration_ms=%.3f "
             "request_id=%s user_id=%s client_ip=%s query=%s user_agent=%s referer=%s"
         )
+        response_body_str: str | None = None
+        if trace_http:
+            try:
+                response_body_bytes = b""
+                async for chunk in response.body_iterator:
+                    response_body_bytes += chunk
+                response.body_iterator = iterate_in_threadpool(
+                    iter([response_body_bytes])
+                )
+                if response_body_bytes:
+                    response_body_str = response_body_bytes.decode(
+                        "utf-8", errors="replace"
+                    )
+                    if len(response_body_str) > 2048:
+                        response_body_str = (
+                            response_body_str[:2048] + "...<truncated>"
+                        )
+            except Exception:
+                response_body_str = "<unavailable>"
+
+        extra_payload = {
+            "method": request.method,
+            "route": route,
+            "query": request.url.query,
+            "status": status_code,
+            "duration_ms": duration_ms,
+            "request_id": request_id,
+            "user_id": user_id,
+            "client_ip": client_ip,
+            "user_agent": request.headers.get("User-Agent"),
+            "referer": request.headers.get("Referer"),
+        }
+        if trace_http:
+            extra_payload["request_body"] = request_body
+            extra_payload["response_body"] = response_body_str
+
         logger.log(
             level,  # type: ignore[arg-type]
             message,
@@ -102,19 +161,6 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             request.url.query or "-",
             request.headers.get("User-Agent") or "-",
             request.headers.get("Referer") or "-",
-            extra={
-                "extra": {
-                    "method": request.method,
-                    "route": route,
-                    "query": request.url.query,
-                    "status": status_code,
-                    "duration_ms": duration_ms,
-                    "request_id": request_id,
-                    "user_id": user_id,
-                    "client_ip": client_ip,
-                    "user_agent": request.headers.get("User-Agent"),
-                    "referer": request.headers.get("Referer"),
-                }
-            },
+            extra={"extra": extra_payload},
         )
         return response

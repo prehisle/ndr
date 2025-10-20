@@ -6,6 +6,7 @@
 
 - 节点模型提供 `parent_id` 与 `position` 字段：新增节点默认追加到父节点末尾，可通过 `POST /api/v1/nodes/reorder` 批量调整同级排序，响应会返回重排后的节点列表，便于实现目录拖拽。
 - 高危操作独立密钥：设置 `DESTRUCTIVE_API_KEY` 后，调用方需携带 `X-Admin-Key` 才能访问 `/api/v1/documents/{id}/purge` 与 `/api/v1/nodes/{id}/purge`，用于在软删后彻底清除数据及关联。
+- 调试场景可设置 `TRACE_HTTP=true` 输出请求/响应体（默认截断 2048 字符），部署环境请保持关闭以避免泄露。
 
 ## 快速开始
 
