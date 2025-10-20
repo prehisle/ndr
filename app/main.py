@@ -1,3 +1,5 @@
+import logging
+
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -105,7 +107,28 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
+        logger = logging.getLogger("http")
         normalized_detail, code_override = _normalize_detail(exc.detail)
+        logger.log(
+            logging.WARNING if exc.status_code < 500 else logging.ERROR,
+            "http_exception status=%s detail=%s method=%s path=%s request_id=%s user_id=%s",
+            exc.status_code,
+            normalized_detail,
+            request.method,
+            request.url.path,
+            request.headers.get("X-Request-Id"),
+            request.headers.get("X-User-Id") or "<missing>",
+            extra={
+                "extra": {
+                    "status": exc.status_code,
+                    "detail": normalized_detail,
+                    "method": request.method,
+                    "route": request.url.path,
+                    "request_id": request.headers.get("X-Request-Id"),
+                    "user_id": request.headers.get("X-User-Id") or "<missing>",
+                }
+            },
+        )
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",

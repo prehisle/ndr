@@ -22,7 +22,12 @@ def get_request_context(
     x_user_id: str | None = Header(default=None),
     x_request_id: str | None = Header(default=None),
 ):
-    return {"user_id": x_user_id or "system", "request_id": x_request_id}
+    user_id = x_user_id if x_user_id not in (None, "") else "<missing>"
+    return {
+        "user_id": user_id,
+        "request_id": x_request_id,
+        "user_supplied": x_user_id if x_user_id is not None else None,
+    }
 
 
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
@@ -37,9 +42,6 @@ def require_admin_key(x_admin_key: str | None = Header(default=None)) -> None:
     settings = get_settings()
     admin_key = getattr(settings, "DESTRUCTIVE_API_KEY", None)
     if not admin_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Permanent delete is disabled",
-        )
+        raise HTTPException(status_code=503, detail="Permanent delete is disabled")
     if x_admin_key != admin_key:
         raise HTTPException(status_code=403, detail="Forbidden")
