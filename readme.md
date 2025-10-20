@@ -22,7 +22,7 @@
    - 运行迁移与服务：
      ```bash
      alembic upgrade head
-     uvicorn app.main:app --reload
+     uvicorn app.main:app --reload --port 9001
      ```
 
 ## 运行测试

@@ -4,17 +4,7 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "sqltools.connections": [
-        {
-            "ssh": "Disabled",
-            "previewLimit": 50,
-            "server": "192.168.1.4",
-            "port": 5432,
-            "driver": "PostgreSQL",
-            "name": "1.4 5432",
-            "database": "admin",
-            "username": "admin",
-            "password": "admin"
-        }
-    ]
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "${workspaceFolder}"
+    }
 }
