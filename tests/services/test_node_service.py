@@ -9,8 +9,10 @@ from app.app.services import (
     NodeConflictError,
     NodeCreateData,
     NodeNotFoundError,
+    NodeReorderData,
     NodeService,
     NodeUpdateData,
+    ParentNodeNotFoundError,
     RelationshipService,
 )
 from app.infra.db.session import get_session_factory
@@ -30,21 +32,31 @@ def test_update_node_propagates_path_changes_to_descendants(session):
     root = service.create_node(
         NodeCreateData(name="Root", slug="root", parent_path=None), user_id="u1"
     )
+    assert root.parent_id is None
+    assert root.position == 0
     other_root = service.create_node(
         NodeCreateData(name="Other", slug="other", parent_path=None), user_id="u1"
     )
+    assert other_root.parent_id is None
+    assert other_root.position == 1
     child = service.create_node(
         NodeCreateData(name="Child", slug="child", parent_path=root.path),
         user_id="u1",
     )
+    assert child.parent_id == root.id
+    assert child.position == 0
     grand = service.create_node(
         NodeCreateData(name="Grand", slug="grand", parent_path=child.path),
         user_id="u1",
     )
+    assert grand.parent_id == child.id
+    assert grand.position == 0
 
     updated = service.update_node(child.id, NodeUpdateData(slug="kid"), user_id="u2")
     assert updated.path == "root.kid"
-    assert service.get_node(grand.id).path == "root.kid.grand"
+    refreshed_grand = service.get_node(grand.id)
+    assert refreshed_grand.path == "root.kid.grand"
+    assert refreshed_grand.parent_id == child.id
 
     moved = service.update_node(
         child.id,
@@ -52,13 +64,21 @@ def test_update_node_propagates_path_changes_to_descendants(session):
         user_id="u3",
     )
     assert moved.path == "other.kid"
-    assert service.get_node(grand.id).path == "other.kid.grand"
+    assert moved.parent_id == other_root.id
+    assert moved.position == 0
+    moved_grand = service.get_node(grand.id)
+    assert moved_grand.path == "other.kid.grand"
+    assert moved_grand.parent_id == child.id
 
     depth_one = service.list_children(other_root.id, depth=1)
-    assert {node.id for node in depth_one} == {child.id}
+    assert [node.id for node in depth_one] == [child.id]
+    assert [node.position for node in depth_one] == [0]
 
     depth_two = service.list_children(other_root.id, depth=2)
-    assert {node.id for node in depth_two} == {child.id, grand.id}
+    assert [node.id for node in depth_two] == [child.id, grand.id]
+    parent_map = {node.id: node.parent_id for node in depth_two}
+    assert parent_map[child.id] == other_root.id
+    assert parent_map[grand.id] == child.id
 
 
 def test_create_node_enforces_parent_name_and_path_uniqueness(session):
@@ -79,6 +99,64 @@ def test_create_node_enforces_parent_name_and_path_uniqueness(session):
     service.create_node(
         NodeCreateData(name="Child", slug="sibling", parent_path=None), user_id="u1"
     )
+
+
+def test_reorder_children_updates_positions(session):
+    service = NodeService(session)
+
+    root = service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None), user_id="owner"
+    )
+    child_a = service.create_node(
+        NodeCreateData(name="A", slug="a", parent_path=root.path), user_id="owner"
+    )
+    child_b = service.create_node(
+        NodeCreateData(name="B", slug="b", parent_path=root.path), user_id="owner"
+    )
+    child_c = service.create_node(
+        NodeCreateData(name="C", slug="c", parent_path=root.path), user_id="owner"
+    )
+
+    reordered = service.reorder_children(
+        NodeReorderData(parent_id=root.id, ordered_ids=(child_c.id, child_a.id)),
+        user_id="operator",
+    )
+    assert [node.id for node in reordered] == [child_c.id, child_a.id, child_b.id]
+    assert [node.position for node in reordered] == [0, 1, 2]
+
+    children = service.list_children(root.id, depth=1)
+    assert [node.id for node in children] == [child_c.id, child_a.id, child_b.id]
+    assert [node.position for node in children] == [0, 1, 2]
+
+
+def test_reorder_root_nodes(session):
+    service = NodeService(session)
+
+    root_a = service.create_node(
+        NodeCreateData(name="RootA", slug="root-a", parent_path=None), user_id="u1"
+    )
+    root_b = service.create_node(
+        NodeCreateData(name="RootB", slug="root-b", parent_path=None), user_id="u1"
+    )
+    root_c = service.create_node(
+        NodeCreateData(name="RootC", slug="root-c", parent_path=None), user_id="u1"
+    )
+
+    reordered = service.reorder_children(
+        NodeReorderData(parent_id=None, ordered_ids=(root_c.id, root_a.id)),
+        user_id="u2",
+    )
+    assert [node.id for node in reordered][:3] == [root_c.id, root_a.id, root_b.id]
+    assert [node.position for node in reordered][:3] == [0, 1, 2]
+
+def test_create_node_requires_existing_parent_when_specified(session):
+    service = NodeService(session)
+    with pytest.raises(ParentNodeNotFoundError):
+        service.create_node(
+            NodeCreateData(name="Orphan", slug="orphan", parent_path="missing"),
+            user_id="u1",
+        )
+
 
 
 def test_soft_delete_node_requires_active_record(session):

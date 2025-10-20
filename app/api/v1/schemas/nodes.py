@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
 
 
@@ -23,6 +23,8 @@ class NodeOut(BaseModel):
     name: str
     slug: str
     path: str
+    parent_id: int | None = None
+    position: int
     created_by: str
     updated_by: str
     created_at: datetime
@@ -35,3 +37,8 @@ class NodesPage(BaseModel):
     size: int
     total: int
     items: list[NodeOut]
+
+
+class NodeReorderPayload(BaseModel):
+    parent_id: int | None = None
+    ordered_ids: list[int] = Field(default_factory=list)

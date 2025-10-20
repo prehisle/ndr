@@ -71,6 +71,8 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 201
     root = r.json()
     assert root["path"] == "root"
+    assert root["parent_id"] is None
+    assert root["position"] == 0
 
     # Create second root node to support later move
     r = client.post(
@@ -81,6 +83,7 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 201
     other_root = r.json()
     other_root_id = other_root["id"]
+    assert other_root["position"] == 1
 
     # Create child under root
     r = client.post(
@@ -92,6 +95,8 @@ def test_node_crud_and_children_and_relationships():
     child = r.json()
     child_id = child["id"]
     assert child["path"] == "root.child"
+    assert child["parent_id"] == root["id"]
+    assert child["position"] == 0
 
     # Create grandchild under child path
     r = client.post(
@@ -102,6 +107,8 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 201
     grand = r.json()
     grand_id = grand["id"]
+    assert grand["parent_id"] == child_id
+    assert grand["position"] == 0
 
     # Update child slug -> entire subtree path updates
     r = client.put(
@@ -112,9 +119,14 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 200
     child = r.json()
     assert child["path"] == "root.kid"
+    assert child["parent_id"] == root["id"]
+    assert child["position"] == 0
     r = client.get(f"/api/v1/nodes/{grand_id}")
     assert r.status_code == 200
-    assert r.json()["path"] == "root.kid.grand"
+    grand_fetched = r.json()
+    assert grand_fetched["path"] == "root.kid.grand"
+    assert grand_fetched["parent_id"] == child_id
+    assert grand_fetched["position"] == 0
 
     # Move child subtree under second root
     r = client.put(
@@ -125,9 +137,14 @@ def test_node_crud_and_children_and_relationships():
     assert r.status_code == 200
     child = r.json()
     assert child["path"] == "other-root.kid"
+    assert child["parent_id"] == other_root_id
+    assert child["position"] == 0
     r = client.get(f"/api/v1/nodes/{grand_id}")
     assert r.status_code == 200
-    assert r.json()["path"] == "other-root.kid.grand"
+    grand_fetched = r.json()
+    assert grand_fetched["path"] == "other-root.kid.grand"
+    assert grand_fetched["parent_id"] == child_id
+    assert grand_fetched["position"] == 0
 
     # List nodes (exclude deleted)
     r = client.get("/api/v1/nodes?page=1&size=10")
@@ -135,19 +152,65 @@ def test_node_crud_and_children_and_relationships():
     data = r.json()
     assert data["total"] >= 2
     assert len(data["items"]) >= 2
+    assert all("parent_id" in item for item in data["items"])
+    assert all("position" in item for item in data["items"])
 
     # Children depth=1 should only include immediate children
     r = client.get(f"/api/v1/nodes/{other_root_id}/children?depth=1")
     assert r.status_code == 200
     children = r.json()
-    assert any(n["id"] == child_id for n in children)
-    assert all(n["id"] != grand_id for n in children)
+    assert [n["id"] for n in children] == [child_id]
+    assert [n["parent_id"] for n in children] == [other_root_id]
+    assert [n["position"] for n in children] == [0]
 
     # Depth=2 should include grandchildren
     r = client.get(f"/api/v1/nodes/{other_root_id}/children?depth=2")
     assert r.status_code == 200
     depth_two = r.json()
-    assert any(n["id"] == grand_id for n in depth_two)
+    assert [n["id"] for n in depth_two] == [child_id, grand_id]
+    parent_map = {n["id"]: n["parent_id"] for n in depth_two}
+    assert parent_map[child_id] == other_root_id
+    assert parent_map[grand_id] == child_id
+
+    # Add another child under other_root to exercise reorder API
+    r = client.post(
+        "/api/v1/nodes",
+        json={"name": "Sibling", "slug": "sibling", "parent_path": "other-root"},
+        headers={"X-User-Id": "u4"},
+    )
+    assert r.status_code == 201
+    sibling = r.json()
+    sibling_id = sibling["id"]
+    assert sibling["parent_id"] == other_root_id
+    assert sibling["position"] == 1
+
+    reorder_payload = {"parent_id": other_root_id, "ordered_ids": [sibling_id]}
+    r = client.post(
+        "/api/v1/nodes/reorder",
+        json=reorder_payload,
+        headers={"X-User-Id": "u4"},
+    )
+    assert r.status_code == 200
+    reordered = r.json()
+    assert [node["id"] for node in reordered] == [sibling_id, child_id]
+    assert [node["position"] for node in reordered] == [0, 1]
+
+    r = client.get(f"/api/v1/nodes/{other_root_id}/children?depth=1")
+    ordered_children = r.json()
+    assert [n["id"] for n in ordered_children] == [sibling_id, child_id]
+    assert [n["position"] for n in ordered_children] == [0, 1]
+
+    # Reorder root nodes to move other_root before root
+    r = client.post(
+        "/api/v1/nodes/reorder",
+        json={"parent_id": None, "ordered_ids": [other_root_id]},
+        headers={"X-User-Id": "u4"},
+    )
+    assert r.status_code == 200
+    root_order = r.json()
+    assert root_order[0]["id"] == other_root_id
+    assert root_order[0]["position"] == 0
+    assert root_order[1]["id"] == root["id"]
 
     # Bind document to child
     dr = client.post(
@@ -201,6 +264,18 @@ def test_node_crud_and_children_and_relationships():
     )
     assert restore_child.status_code == 200
     assert client.get(f"/api/v1/nodes/{child_id}").status_code == 200
+
+
+def test_create_node_with_missing_parent_returns_404():
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/nodes",
+        json={"name": "Orphan", "slug": "orphan", "parent_path": "missing"},
+        headers={"X-User-Id": "tester"},
+    )
+    assert response.status_code == 404
 
 
 def test_document_versions_api():

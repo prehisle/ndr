@@ -17,12 +17,19 @@ def session():
         session.rollback()
 
 
-def _node(name: str, slug: str, path: str, parent_path: str | None = None) -> Node:
+def _node(
+    name: str,
+    slug: str,
+    path: str,
+    parent_path: str | None = None,
+    position: int = 0,
+) -> Node:
     return Node(
         name=name,
         slug=slug,
         path=path,
         parent_path=parent_path,
+        position=position,
         created_by="tester",
         updated_by="tester",
     )

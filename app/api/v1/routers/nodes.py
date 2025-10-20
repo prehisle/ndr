@@ -3,7 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, get_request_context
 from app.api.v1.schemas.documents import DocumentOut
-from app.api.v1.schemas.nodes import NodeCreate, NodeOut, NodesPage, NodeUpdate
+from app.api.v1.schemas.nodes import (
+    NodeCreate,
+    NodeOut,
+    NodeReorderPayload,
+    NodesPage,
+    NodeUpdate,
+)
 from app.app.services import (
     DocumentNotFoundError,
     InvalidNodeOperationError,
@@ -11,6 +17,7 @@ from app.app.services import (
     NodeConflictError,
     NodeCreateData,
     NodeNotFoundError,
+    NodeReorderData,
     NodeUpdateData,
     ParentNodeNotFoundError,
     RelationshipNotFoundError,
@@ -45,6 +52,8 @@ def create_node(
             return node_service.create_node(data, user_id=user_id)
         except NodeConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ParentNodeNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except MissingUserError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -161,6 +170,33 @@ def list_nodes(
         page=page, size=size, include_deleted=include_deleted
     )
     return {"page": page, "size": size, "total": total, "items": items}
+
+
+@router.post("/nodes/reorder", response_model=list[NodeOut])
+def reorder_nodes(
+    payload: NodeReorderPayload,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    user_id = ctx["user_id"]
+    services = get_service_bundle(db)
+    node_service = services.node()
+    try:
+        return node_service.reorder_children(
+            NodeReorderData(
+                parent_id=payload.parent_id,
+                ordered_ids=tuple(payload.ordered_ids),
+            ),
+            user_id=user_id,
+        )
+    except ParentNodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidNodeOperationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # Restore relationship endpoints under nodes for compatibility

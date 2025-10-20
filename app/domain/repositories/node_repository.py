@@ -51,6 +51,46 @@ class NodeRepository:
             stmt = stmt.where(Node.id != exclude_id)
         return self._session.execute(stmt).scalar_one_or_none() is not None
 
+    def _with_parent_filter(self, stmt, parent_id: int | None):
+        if parent_id is None:
+            return stmt.where(Node.parent_id.is_(None))
+        return stmt.where(Node.parent_id == parent_id)
+
+    def next_position(self, parent_id: int | None) -> int:
+        stmt = select(func.coalesce(func.max(Node.position), -1) + 1)
+        stmt = self._with_parent_filter(stmt, parent_id)
+        stmt = stmt.where(Node.deleted_at.is_(None))
+        return self._session.execute(stmt).scalar_one()
+
+    def fetch_siblings(
+        self,
+        parent_id: int | None,
+        *,
+        include_deleted: bool,
+        order_by_position: bool = True,
+    ) -> Sequence[Node]:
+        stmt = select(Node)
+        stmt = self._with_parent_filter(stmt, parent_id)
+        if not include_deleted:
+            stmt = stmt.where(Node.deleted_at.is_(None))
+        if order_by_position:
+            stmt = stmt.order_by(Node.position, Node.id)
+        return tuple(self._session.execute(stmt).scalars())
+
+    def normalize_positions(
+        self, parent_id: int | None, *, include_deleted: bool = False
+    ) -> None:
+        siblings = list(
+            self.fetch_siblings(
+                parent_id,
+                include_deleted=include_deleted,
+                order_by_position=True,
+            )
+        )
+        for index, node in enumerate(siblings):
+            if node.position != index:
+                node.position = index
+
     def require_ltree(self) -> None:
         dialect = self._dialect()
         if dialect is None or dialect.name != "postgresql":
@@ -82,7 +122,7 @@ class NodeRepository:
             select(Node)
             .where(Node.deleted_at.is_(None))
             .where(path_expr.op("~")(make_lquery(pattern)))
-            .order_by(Node.path)
+            .order_by(Node.parent_id, Node.position, Node.id)
         )
         return tuple(self._session.execute(stmt).scalars())
 

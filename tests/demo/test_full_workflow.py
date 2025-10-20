@@ -30,6 +30,8 @@ def test_full_workflow_with_soft_delete_and_restore():
     )
     assert node_resp.status_code == 201
     node_id = node_resp.json()["id"]
+    assert node_resp.json()["parent_id"] is None
+    assert node_resp.json()["position"] == 0
 
     bind_resp = client.post(
         f"/api/v1/nodes/{node_id}/bind/{document_id}",
@@ -58,6 +60,8 @@ def test_full_workflow_with_soft_delete_and_restore():
     )
     assert node_update.status_code == 200
     assert node_update.json()["path"] == "workflow-v2"
+    assert node_update.json()["parent_id"] is None
+    assert node_update.json()["position"] == 0
 
     rebind_resp = client.post(
         "/api/v1/relationships",
@@ -119,6 +123,8 @@ def test_full_workflow_with_soft_delete_and_restore():
 
     restored_node = client.get(f"/api/v1/nodes/{node_id}")
     assert restored_node.status_code == 200
+    assert restored_node.json()["parent_id"] is None
+    assert restored_node.json()["position"] == 0
     restored_doc = client.get(f"/api/v1/documents/{document_id}")
     assert restored_doc.status_code == 200
     assert restored_doc.json()["content"]["body"] == "final"

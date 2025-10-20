@@ -47,6 +47,12 @@ class NodeUpdateData:
     parent_path_set: bool = False
 
 
+@dataclass(frozen=True)
+class NodeReorderData:
+    parent_id: Optional[int]
+    ordered_ids: tuple[int, ...]
+
+
 class NodeService(BaseService):
     """Application service orchestrating node-related use cases."""
 
@@ -68,8 +74,17 @@ class NodeService(BaseService):
 
     def create_node(self, data: NodeCreateData, *, user_id: str) -> Node:
         user = self._ensure_user(user_id)
+        parent_node = None
         parent_path = data.parent_path or None
+        if parent_path:
+            parent_node = self._repo.get_active_by_path(parent_path)
+            if not parent_node:
+                raise ParentNodeNotFoundError("Parent node not found")
+            parent_path = parent_node.path
+
         path = data.slug if not parent_path else f"{parent_path}.{data.slug}"
+        parent_id = parent_node.id if parent_node else None
+        position = self._repo.next_position(parent_id)
 
         if self._repo.has_active_path(path):
             raise NodeConflictError("path", "Node path already exists")
@@ -82,8 +97,10 @@ class NodeService(BaseService):
         node = Node(
             name=data.name,
             slug=data.slug,
+            parent_id=parent_id,
             parent_path=parent_path,
             path=path,
+            position=position,
             created_by=user,
             updated_by=user,
         )
@@ -105,6 +122,8 @@ class NodeService(BaseService):
 
         parent_node = None
         target_parent_path = node.parent_path
+        target_parent_id = node.parent_id
+        original_parent_id = node.parent_id
         if data.parent_path_set:
             if data.parent_path:
                 parent_node = self._repo.get_active_by_path(data.parent_path)
@@ -119,8 +138,10 @@ class NodeService(BaseService):
                         "Cannot move a node under its own subtree"
                     )
                 target_parent_path = parent_node.path
+                target_parent_id = parent_node.id
             else:
                 target_parent_path = None
+                target_parent_id = None
 
         lock_ids = [node.id]
         if parent_node:
@@ -150,7 +171,10 @@ class NodeService(BaseService):
         if data.slug is not None:
             node.slug = new_slug
         if data.parent_path_set:
+            node.parent_id = target_parent_id
             node.parent_path = new_parent_path
+            if target_parent_id != original_parent_id:
+                node.position = self._repo.next_position(target_parent_id)
 
         if path_changed:
             old_path = node.path
@@ -167,8 +191,19 @@ class NodeService(BaseService):
                 else:
                     descendant.parent_path = None
                 descendant.updated_by = user
+            # Ensure descendant parent IDs follow the updated paths
+            updated_nodes = [node, *descendants]
+            path_to_id = {n.path: n.id for n in updated_nodes}
+            for descendant in descendants:
+                if descendant.parent_path:
+                    descendant.parent_id = path_to_id.get(descendant.parent_path)
+                else:
+                    descendant.parent_id = None
 
         node.updated_by = user
+        if data.parent_path_set and target_parent_id != original_parent_id:
+            self._repo.normalize_positions(original_parent_id)
+            self._repo.normalize_positions(target_parent_id)
         self._commit()
         self.session.refresh(node)
         return node
@@ -178,9 +213,54 @@ class NodeService(BaseService):
         node = self._repo.get(node_id)
         if not node or node.deleted_at is not None:
             raise NodeNotFoundError("Node not found or already deleted")
+        parent_id = node.parent_id
         node.deleted_at = datetime.now(timezone.utc)
         node.updated_by = user
+        self._repo.normalize_positions(parent_id)
         self._commit()
+
+    def reorder_children(self, data: NodeReorderData, *, user_id: str) -> list[Node]:
+        user = self._ensure_user(user_id)
+
+        parent_id = data.parent_id
+        if parent_id is not None:
+            parent_node = self._repo.get(parent_id)
+            if not parent_node or parent_node.deleted_at is not None:
+                raise ParentNodeNotFoundError("Parent node not found")
+
+        siblings = list(self._repo.fetch_siblings(parent_id, include_deleted=False))
+        if not siblings:
+            if data.ordered_ids:
+                raise NodeNotFoundError("Node not found")
+            return []
+
+        provided_ids = list(data.ordered_ids)
+        provided_ids_set = set(provided_ids)
+        if len(provided_ids) != len(provided_ids_set):
+            raise InvalidNodeOperationError("Duplicate node ids in reorder payload")
+
+        sibling_ids = {node.id for node in siblings}
+        missing = provided_ids_set - sibling_ids
+        if missing:
+            raise NodeNotFoundError("Node not found")
+
+        node_by_id = {node.id: node for node in siblings}
+        ordered_nodes = [node_by_id[node_id] for node_id in provided_ids]
+        remaining_nodes = [node for node in siblings if node.id not in provided_ids_set]
+        sequence = ordered_nodes + remaining_nodes
+
+        lock_ids = [node.id for node in sequence]
+        if parent_id is not None:
+            lock_ids.append(parent_id)
+        self._repo.lock_nodes(lock_ids)
+
+        for index, node in enumerate(sequence):
+            if node.position != index:
+                node.position = index
+                node.updated_by = user
+
+        self._commit()
+        return sequence
 
     def list_nodes(
         self, *, page: int, size: int, include_deleted: bool = False
@@ -192,7 +272,32 @@ class NodeService(BaseService):
         if not node:
             raise NodeNotFoundError("Node not found")
         self._repo.require_ltree()
-        return list(self._repo.fetch_children(node.path, depth))
+        descendants = list(self._repo.fetch_children(node.path, depth))
+        if not descendants:
+            return []
+
+        children_map: dict[int, list[Node]] = {}
+        for descendant in descendants:
+            if descendant.parent_id is None:
+                continue
+            siblings = children_map.setdefault(descendant.parent_id, [])
+            siblings.append(descendant)
+
+        for siblings in children_map.values():
+            siblings.sort(key=lambda n: (n.position, n.id))
+
+        ordered: list[Node] = []
+        current_level = children_map.get(node.id, [])
+        current_depth = 1
+        while current_level and current_depth <= depth:
+            next_level: list[Node] = []
+            for child in current_level:
+                ordered.append(child)
+                if current_depth < depth:
+                    next_level.extend(children_map.get(child.id, []))
+            current_level = next_level
+            current_depth += 1
+        return ordered
 
     def restore_node(self, node_id: int, *, user_id: str) -> Node:
         user = self._ensure_user(user_id)
@@ -213,6 +318,7 @@ class NodeService(BaseService):
         node.deleted_at = None
         node.updated_by = user
         node.updated_at = datetime.now(timezone.utc)
+        self._repo.normalize_positions(node.parent_id)
         self._commit()
         self.session.refresh(node)
         return node

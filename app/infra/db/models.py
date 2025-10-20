@@ -99,6 +99,10 @@ class Node(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     parent_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     path: Mapped[str] = mapped_column(LtreeType(), nullable=False)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
