@@ -28,7 +28,9 @@ if not test_db_url.lower().startswith("postgresql"):
 
 os.environ["DB_URL"] = test_db_url
 os.environ.setdefault("AUTO_APPLY_MIGRATIONS", "true")
-os.environ["DESTRUCTIVE_API_KEY"] = os.environ.get("DESTRUCTIVE_API_KEY") or "admin-secret"
+os.environ["DESTRUCTIVE_API_KEY"] = (
+    os.environ.get("DESTRUCTIVE_API_KEY") or "admin-secret"
+)
 get_settings.cache_clear()  # type: ignore[attr-defined]
 from app.infra.db.alembic_support import upgrade_to_head  # noqa: E402
 from app.infra.db.session import get_session_factory, reset_engine  # noqa: E402
