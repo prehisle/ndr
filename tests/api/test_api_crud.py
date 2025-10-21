@@ -266,6 +266,203 @@ def test_node_crud_and_children_and_relationships():
     assert client.get(f"/api/v1/nodes/{child_id}").status_code == 200
 
 
+def test_list_documents_supports_metadata_and_query_filters():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "searcher"}
+
+    docs = [
+        {
+            "title": "Alpha Spec",
+            "metadata": {"stage": "draft", "tags": ["alpha", "beta"]},
+            "content": {"body": "Alpha entry"},
+        },
+        {
+            "title": "Beta Spec",
+            "metadata": {"stage": "final", "tags": ["beta"]},
+            "content": {"body": "Production ready"},
+        },
+        {
+            "title": "Gamma Spec",
+            "metadata": {"stage": "draft", "tags": []},
+            "content": {"body": "Gamma notes"},
+        },
+    ]
+    created_ids: list[int] = []
+    for payload in docs:
+        resp = client.post("/api/v1/documents", json=payload, headers=headers)
+        assert resp.status_code == 201
+        created_ids.append(resp.json()["id"])
+
+    # Filter by metadata equality
+    stage_resp = client.get("/api/v1/documents", params={"metadata.stage": "draft"})
+    assert stage_resp.status_code == 200
+    stage_ids = {doc["id"] for doc in stage_resp.json()["items"]}
+    assert stage_ids == {created_ids[0], created_ids[2]}
+
+    # Filter by metadata tags from array
+    tag_resp = client.get("/api/v1/documents", params={"metadata.tags": "alpha"})
+    assert tag_resp.status_code == 200
+    tag_items = tag_resp.json()["items"]
+    assert {item["id"] for item in tag_items} == {created_ids[0]}
+
+    # Multiple values for same key acts as OR
+    stage_multi = client.get(
+        "/api/v1/documents",
+        params=[("metadata.stage", "draft"), ("metadata.stage", "final")],
+    )
+    assert stage_multi.status_code == 200
+    multi_ids = {doc["id"] for doc in stage_multi.json()["items"]}
+    assert multi_ids == set(created_ids)
+
+    # Fuzzy search across title/content
+    search_resp = client.get("/api/v1/documents", params={"query": "Alpha"})
+    assert search_resp.status_code == 200
+    search_ids = {doc["id"] for doc in search_resp.json()["items"]}
+    assert created_ids[0] in search_ids
+    assert created_ids[1] not in search_ids
+
+    # Combined metadata + search narrows results
+    combo_resp = client.get(
+        "/api/v1/documents",
+        params={"metadata.stage": "draft", "query": "Gamma"},
+    )
+    assert combo_resp.status_code == 200
+    combo_items = combo_resp.json()["items"]
+    assert {doc["id"] for doc in combo_items} == {created_ids[2]}
+
+
+def test_subtree_documents_supports_filters():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "tree"}
+
+    node = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child", "parent_path": "root"},
+        headers=headers,
+    ).json()
+
+    doc_alpha = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Alpha Doc",
+            "metadata": {"stage": "draft", "tags": ["alpha"]},
+            "content": {"body": "Alpha section"},
+        },
+        headers=headers,
+    ).json()
+    doc_beta = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Beta Doc",
+            "metadata": {"stage": "final", "tags": ["beta"]},
+            "content": {"body": "Beta section"},
+        },
+        headers=headers,
+    ).json()
+
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{doc_alpha['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{doc_beta['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+
+    tag_resp = client.get(
+        f"/api/v1/nodes/{node['id']}/subtree-documents",
+        params={"metadata.tags": "alpha"},
+    )
+    assert tag_resp.status_code == 200
+    assert {doc["id"] for doc in tag_resp.json()} == {doc_alpha["id"]}
+
+    search_resp = client.get(
+        f"/api/v1/nodes/{node['id']}/subtree-documents",
+        params={"query": "Beta"},
+    )
+    assert search_resp.status_code == 200
+    assert {doc["id"] for doc in search_resp.json()} == {doc_beta["id"]}
+
+    combo_resp = client.get(
+        f"/api/v1/nodes/{node['id']}/subtree-documents",
+        params={"metadata.stage": "draft", "query": "Alpha"},
+    )
+    assert combo_resp.status_code == 200
+    assert {doc["id"] for doc in combo_resp.json()} == {doc_alpha["id"]}
+
+
+def test_subtree_documents_include_descendants_toggle():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "toggle"}
+
+    root = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child", "parent_path": "root"},
+        headers=headers,
+    ).json()
+
+    root_doc = client.post(
+        "/api/v1/documents",
+        json={"title": "Root Doc", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    child_doc = client.post(
+        "/api/v1/documents",
+        json={"title": "Child Doc", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+
+    assert (
+        client.post(
+            f"/api/v1/nodes/{root['id']}/bind/{root_doc['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{child_doc['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+
+    all_docs = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+    )
+    assert all_docs.status_code == 200
+    assert {doc["id"] for doc in all_docs.json()} == {
+        root_doc["id"],
+        child_doc["id"],
+    }
+
+    direct_docs = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"include_descendants": "false"},
+    )
+    assert direct_docs.status_code == 200
+    assert {doc["id"] for doc in direct_docs.json()} == {root_doc["id"]}
+
+
 def test_create_node_with_missing_parent_returns_404():
     app = create_app()
     client = TestClient(app)

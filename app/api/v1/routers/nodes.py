@@ -1,3 +1,6 @@
+from collections import defaultdict
+from typing import DefaultDict
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
@@ -30,6 +33,20 @@ router = APIRouter()
 
 
 # Using NodeCreate/NodeUpdate from app.api.v1.schemas.nodes
+
+
+def _extract_metadata_filters(request: Request) -> dict[str, list[str]]:
+    filters: DefaultDict[str, list[str]] = defaultdict(list)
+    for key, value in request.query_params.multi_items():
+        if not key.startswith("metadata."):
+            continue
+        field = key[len("metadata.") :].strip()
+        if not field or value in (None, ""):
+            continue
+        filters[field].append(value)
+    return dict(filters)
+
+
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
 def create_node(
     request: Request,
@@ -278,18 +295,25 @@ def list_children(
 
 @router.get("/nodes/{id}/subtree-documents", response_model=list[DocumentOut])
 def get_subtree_documents(
+    request: Request,
     id: int,
     include_deleted_nodes: bool = Query(default=False),
     include_deleted_documents: bool = Query(default=False),
+    include_descendants: bool = Query(default=True),
+    search: str | None = Query(default=None, alias="query"),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     node_service = services.node()
+    metadata_filters = _extract_metadata_filters(request)
     try:
         return node_service.get_subtree_documents(
             id,
             include_deleted_nodes=include_deleted_nodes,
             include_deleted_documents=include_deleted_documents,
+            include_descendants=include_descendants,
+            metadata_filters=metadata_filters or None,
+            search_query=search,
         )
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

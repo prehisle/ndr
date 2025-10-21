@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.infra.db.models import Document
 
+from .document_filters import MetadataFilters, apply_document_filters
+
 
 class DocumentRepository:
     def __init__(self, session: Session):
@@ -25,13 +27,31 @@ class DocumentRepository:
         return 0 if max_pos is None else int(max_pos) + 1
 
     def paginate_documents(
-        self, page: int, size: int, include_deleted: bool, doc_type: str | None = None
+        self,
+        page: int,
+        size: int,
+        include_deleted: bool,
+        *,
+        metadata_filters: MetadataFilters | None = None,
+        search_query: str | None = None,
+        doc_type: str | None = None,
     ) -> tuple[list[Document], int]:
         base_stmt = select(Document)
         count_stmt = select(func.count()).select_from(Document)
         if not include_deleted:
             base_stmt = base_stmt.where(Document.deleted_at.is_(None))
             count_stmt = count_stmt.where(Document.deleted_at.is_(None))
+        
+        base_stmt = apply_document_filters(
+            base_stmt,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+        )
+        count_stmt = apply_document_filters(
+            count_stmt,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+        )
         if doc_type is not None:
             base_stmt = base_stmt.where(Document.type == doc_type)
             count_stmt = count_stmt.where(Document.type == doc_type)

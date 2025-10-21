@@ -1,3 +1,6 @@
+from collections import defaultdict
+from typing import DefaultDict
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
@@ -27,6 +30,18 @@ router = APIRouter()
 
 
 # Using DocumentCreate/DocumentUpdate from app.api.v1.schemas.documents
+
+
+def _extract_metadata_filters(request: Request) -> dict[str, list[str]]:
+    filters: DefaultDict[str, list[str]] = defaultdict(list)
+    for key, value in request.query_params.multi_items():
+        if not key.startswith("metadata."):
+            continue
+        field = key[len("metadata.") :].strip()
+        if not field or value in (None, ""):
+            continue
+        filters[field].append(value)
+    return dict(filters)
 
 
 @router.post(
@@ -170,16 +185,24 @@ def restore_document(
 
 @router.get("/documents", response_model=DocumentsPage)
 def list_documents(
+    request: Request,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
     include_deleted: bool = False,
+    search: str | None = Query(default=None, alias="query"),
     type: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     document_service = services.document()
+    metadata_filters = _extract_metadata_filters(request)
     items, total = document_service.list_documents(
-        page=page, size=size, include_deleted=include_deleted, doc_type=type
+        page=page,
+        size=size,
+        include_deleted=include_deleted,
+        metadata_filters=metadata_filters or None,
+        search_query=search,
+        doc_type=type,
     )
     return {"page": page, "size": size, "total": total, "items": items}
 

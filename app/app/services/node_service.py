@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Mapping, Optional, Sequence
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -361,20 +361,30 @@ class NodeService(BaseService):
         *,
         include_deleted_nodes: bool = False,
         include_deleted_documents: bool = False,
+        include_descendants: bool = True,
+        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        search_query: str | None = None,
     ) -> list[Document]:
         node = self._repo.get(node_id)
         if not node or (node.deleted_at is not None and not include_deleted_nodes):
             raise NodeNotFoundError("Node not found")
-        self._repo.require_ltree()
 
-        subtree_nodes = self._repo.fetch_subtree(
-            node.path, include_deleted=include_deleted_nodes
-        )
-        node_ids = {n.id for n in subtree_nodes}
-        node_ids.add(node.id)
+        node_ids: set[int]
+        if include_descendants:
+            self._repo.require_ltree()
+            subtree_nodes = self._repo.fetch_subtree(
+                node.path, include_deleted=include_deleted_nodes
+            )
+            node_ids = {n.id for n in subtree_nodes}
+            node_ids.add(node.id)
+        else:
+            node_ids = {node.id}
+
         documents = self._relationships.list_documents_for_nodes(
             sorted(node_ids),
             include_deleted_relations=include_deleted_nodes,
             include_deleted_documents=include_deleted_documents,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
         )
         return documents

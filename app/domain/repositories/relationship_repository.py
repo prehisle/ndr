@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.infra.db.models import Document, NodeDocument
 
+from .document_filters import MetadataFilters, apply_document_filters
+
 
 class RelationshipRepository:
     def __init__(self, session: Session):
@@ -38,6 +40,8 @@ class RelationshipRepository:
         *,
         include_deleted_relations: bool = False,
         include_deleted_documents: bool = False,
+        metadata_filters: MetadataFilters | None = None,
+        search_query: str | None = None,
     ) -> list[Document]:
         if not node_ids:
             return []
@@ -52,4 +56,9 @@ class RelationshipRepository:
             stmt = stmt.where(NodeDocument.deleted_at.is_(None))
         if not include_deleted_documents:
             stmt = stmt.where(Document.deleted_at.is_(None))
+        stmt = apply_document_filters(
+            stmt,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+        )
         return list(self._session.execute(stmt).scalars())

@@ -3,8 +3,8 @@ import time
 import uuid
 
 from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.concurrency import iterate_in_threadpool
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.common.config import get_settings
 from app.infra.observability.metrics import LATENCY, REQUESTS
@@ -29,9 +29,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             try:
                 raw_body = await request.body()
                 if raw_body:
-                    request_body = raw_body.decode("utf-8", errors="replace")
-                    if len(request_body) > 2048:
-                        request_body = request_body[:2048] + "...<truncated>"
+                    decoded_body = raw_body.decode("utf-8", errors="replace")
+                    if len(decoded_body) > 2048:
+                        decoded_body = decoded_body[:2048] + "...<truncated>"
+                    request_body = decoded_body
 
                     async def receive():
                         return {
@@ -122,13 +123,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                     iter([response_body_bytes])
                 )
                 if response_body_bytes:
-                    response_body_str = response_body_bytes.decode(
-                        "utf-8", errors="replace"
-                    )
-                    if len(response_body_str) > 2048:
-                        response_body_str = (
-                            response_body_str[:2048] + "...<truncated>"
-                        )
+                    decoded_body = response_body_bytes.decode("utf-8", errors="replace")
+                    if len(decoded_body) > 2048:
+                        decoded_body = decoded_body[:2048] + "...<truncated>"
+                    response_body_str = decoded_body
             except Exception:
                 response_body_str = "<unavailable>"
 

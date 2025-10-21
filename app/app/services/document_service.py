@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -124,9 +124,18 @@ class DocumentService(BaseService):
         page: int,
         size: int,
         include_deleted: bool = False,
+        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        search_query: str | None = None,
         doc_type: str | None = None,
     ) -> tuple[list[Document], int]:
-        return self._repo.paginate_documents(page, size, include_deleted, doc_type)
+        return self._repo.paginate_documents(
+            page,
+            size,
+            include_deleted,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+            doc_type=doc_type,
+        )
 
     def restore_document(self, document_id: int, *, user_id: str) -> Document:
         user = self._ensure_user(user_id)
