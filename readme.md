@@ -30,6 +30,8 @@
      alembic upgrade head
      uvicorn app.main:app --reload --port 9001
      ```
+3. **导出openapi.json文档**
+   - `python scripts/export_openapi.py /home/yjxt/codes/ydms/docs/backend`
 
 ## 运行测试
 
