@@ -65,6 +65,7 @@ def create_node(
                 name=payload.name,
                 slug=payload.slug,
                 parent_path=payload.parent_path,
+                type=payload.type,
             )
             return node_service.create_node(data, user_id=user_id)
         except NodeConflictError as exc:
@@ -113,6 +114,7 @@ def update_node(
             slug=payload.slug,
             parent_path=payload.parent_path,
             parent_path_set="parent_path" in payload.model_fields_set,
+            type=payload.type,
         )
         try:
             return node_service.update_node(id, data, user_id=user_id)

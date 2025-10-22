@@ -8,12 +8,14 @@ class NodeCreate(BaseModel):
     name: str
     slug: str
     parent_path: str | None = None
+    type: str | None = None
 
 
 class NodeUpdate(BaseModel):
     name: str | None = None
     slug: str | None = None
     parent_path: str | None = None
+    type: str | None = None
 
 
 class NodeOut(BaseModel):
@@ -22,6 +24,7 @@ class NodeOut(BaseModel):
     id: int
     name: str
     slug: str
+    type: str | None = None
     path: str
     parent_id: int | None = None
     position: int

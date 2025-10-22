@@ -103,11 +103,13 @@ class Node(Base, TimestampMixin):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
+        Index("ix_nodes_type", "type"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
+    type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     parent_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True
     )

@@ -38,6 +38,7 @@ class NodeCreateData:
     name: str
     slug: str
     parent_path: Optional[str]
+    type: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class NodeUpdateData:
     slug: Optional[str] = None
     parent_path: Optional[str] = None
     parent_path_set: bool = False
+    type: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,7 @@ class NodeService(BaseService):
             parent_path=parent_path,
             path=path,
             position=position,
+            type=data.type,
             created_by=user,
             updated_by=user,
         )
@@ -171,6 +174,8 @@ class NodeService(BaseService):
             node.name = new_name
         if data.slug is not None:
             node.slug = new_slug
+        if data.type is not None:
+            node.type = data.type
         if data.parent_path_set:
             node.parent_id = target_parent_id
             node.parent_path = new_parent_path
