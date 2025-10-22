@@ -204,12 +204,13 @@ def list_nodes(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
     include_deleted: bool = False,
+    type: str | None = None,
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     node_service = services.node()
     items, total = node_service.list_nodes(
-        page=page, size=size, include_deleted=include_deleted
+        page=page, size=size, include_deleted=include_deleted, node_type=type
     )
     return {"page": page, "size": size, "total": total, "items": items}
 
@@ -283,12 +284,15 @@ def unbind_document(
 
 @router.get("/nodes/{id}/children", response_model=list[NodeOut])
 def list_children(
-    id: int, depth: int = Query(default=1, ge=1), db: Session = Depends(get_db)
+    id: int,
+    depth: int = Query(default=1, ge=1),
+    type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     node_service = services.node()
     try:
-        return node_service.list_children(id, depth=depth)
+        return node_service.list_children(id, depth=depth, node_type=type)
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LtreeNotAvailableError as exc:
@@ -303,6 +307,7 @@ def get_subtree_documents(
     include_deleted_documents: bool = Query(default=False),
     include_descendants: bool = Query(default=True),
     search: str | None = Query(default=None, alias="query"),
+    type: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
@@ -316,6 +321,7 @@ def get_subtree_documents(
             include_descendants=include_descendants,
             metadata_filters=metadata_filters or None,
             search_query=search,
+            doc_type=type,
         )
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

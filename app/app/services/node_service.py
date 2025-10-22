@@ -300,11 +300,11 @@ class NodeService(BaseService):
         return sequence
 
     def list_nodes(
-        self, *, page: int, size: int, include_deleted: bool = False
+        self, *, page: int, size: int, include_deleted: bool = False, node_type: str | None = None
     ) -> tuple[list[Node], int]:
-        return self._repo.paginate_nodes(page, size, include_deleted)
+        return self._repo.paginate_nodes(page, size, include_deleted, node_type)
 
-    def list_children(self, node_id: int, *, depth: int) -> list[Node]:
+    def list_children(self, node_id: int, *, depth: int, node_type: str | None = None) -> list[Node]:
         node = self._repo.get(node_id)
         if not node:
             raise NodeNotFoundError("Node not found")
@@ -329,7 +329,8 @@ class NodeService(BaseService):
         while current_level and current_depth <= depth:
             next_level: list[Node] = []
             for child in current_level:
-                ordered.append(child)
+                if node_type is None or child.type == node_type:
+                    ordered.append(child)
                 if current_depth < depth:
                     next_level.extend(children_map.get(child.id, []))
             current_level = next_level
@@ -369,6 +370,7 @@ class NodeService(BaseService):
         include_descendants: bool = True,
         metadata_filters: Mapping[str, Sequence[str]] | None = None,
         search_query: str | None = None,
+        doc_type: str | None = None,
     ) -> list[Document]:
         node = self._repo.get(node_id)
         if not node or (node.deleted_at is not None and not include_deleted_nodes):
@@ -391,5 +393,6 @@ class NodeService(BaseService):
             include_deleted_documents=include_deleted_documents,
             metadata_filters=metadata_filters,
             search_query=search_query,
+            doc_type=doc_type,
         )
         return documents

@@ -42,6 +42,7 @@ class RelationshipRepository:
         include_deleted_documents: bool = False,
         metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
+        doc_type: str | None = None,
     ) -> list[Document]:
         if not node_ids:
             return []
@@ -56,6 +57,8 @@ class RelationshipRepository:
             stmt = stmt.where(NodeDocument.deleted_at.is_(None))
         if not include_deleted_documents:
             stmt = stmt.where(Document.deleted_at.is_(None))
+        if doc_type is not None:
+            stmt = stmt.where(Document.type == doc_type)
         stmt = apply_document_filters(
             stmt,
             metadata_filters=metadata_filters,

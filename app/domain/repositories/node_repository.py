@@ -138,13 +138,16 @@ class NodeRepository:
         return tuple(self._session.execute(stmt).scalars())
 
     def paginate_nodes(
-        self, page: int, size: int, include_deleted: bool
+        self, page: int, size: int, include_deleted: bool, node_type: str | None = None
     ) -> tuple[list[Node], int]:
         base_stmt = select(Node)
         count_stmt = select(func.count()).select_from(Node)
         if not include_deleted:
             base_stmt = base_stmt.where(Node.deleted_at.is_(None))
             count_stmt = count_stmt.where(Node.deleted_at.is_(None))
+        if node_type is not None:
+            base_stmt = base_stmt.where(Node.type == node_type)
+            count_stmt = count_stmt.where(Node.type == node_type)
         base_stmt = (
             base_stmt.order_by(Node.created_at.desc())
             .offset((page - 1) * size)
