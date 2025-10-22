@@ -46,8 +46,17 @@ class Document(Base, TimestampMixin):
     content: Mapped[dict[str, Any]] = mapped_column(
         CONTENT_JSON_TYPE, default=dict, nullable=False
     )
+    # 新增的文档类型与位置字段
+    type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("ix_documents_type", "type"),
+        Index("ix_documents_position", "position"),
+        Index("ix_documents_type_position", "type", "position"),
+    )
 
     nodes = relationship("NodeDocument", back_populates="document")
     versions = relationship(
@@ -118,7 +127,6 @@ class NodeDocument(Base, TimestampMixin):
     -------
     node_id / document_id : 复合主键，指向关联的节点与文档。
     created_by / updated_by : 记录关系的创建及最近修改来源。
-    created_at / updated_at / deleted_at : 继承自 `TimestampMixin` 的审计信息。
     """
 
     __tablename__ = "node_documents"

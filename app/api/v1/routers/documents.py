@@ -48,6 +48,8 @@ def create_document(
             title=payload.title,
             metadata=payload.metadata,
             content=payload.content,
+            type=payload.type,
+            position=payload.position,
         )
         try:
             return document_service.create_document(data, user_id=user_id)
@@ -92,6 +94,8 @@ def update_document(
             title=payload.title,
             metadata=payload.metadata,
             content=payload.content,
+            type=payload.type,
+            position=payload.position,
         )
         try:
             return document_service.update_document(id, data, user_id=user_id)
@@ -169,12 +173,13 @@ def list_documents(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
     include_deleted: bool = False,
+    type: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     document_service = services.document()
     items, total = document_service.list_documents(
-        page=page, size=size, include_deleted=include_deleted
+        page=page, size=size, include_deleted=include_deleted, doc_type=type
     )
     return {"page": page, "size": size, "total": total, "items": items}
 
@@ -260,7 +265,6 @@ def diff_document_version(
         diff = version_service.diff_versions(base_version, compare_version)
     else:
         diff = version_service.diff_version_against_document(base_version, document)
-
     return diff
 
 
@@ -277,11 +281,17 @@ def restore_document_version(
 ):
     services = get_service_bundle(db)
     document_service = services.document()
+    # version_service = services.document_version()  # no longer used here
     try:
-        return document_service.restore_document_version(
+        document_service.get_document(id, include_deleted=True)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        restored = document_service.restore_document_version(
             id, version_number, user_id=ctx["user_id"]
         )
     except DocumentNotFoundError as exc:
+        # Includes the case where the specific version was not found
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except MissingUserError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return restored

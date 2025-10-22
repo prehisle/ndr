@@ -46,7 +46,7 @@ class RelationshipRepository:
             .join(NodeDocument, NodeDocument.document_id == Document.id)
             .where(NodeDocument.node_id.in_(node_ids))
             .distinct()
-            .order_by(Document.id)
+            .order_by(Document.position.asc(), Document.id.asc())
         )
         if not include_deleted_relations:
             stmt = stmt.where(NodeDocument.deleted_at.is_(None))

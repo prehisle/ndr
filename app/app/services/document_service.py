@@ -25,6 +25,8 @@ class DocumentCreateData:
     title: str
     metadata: Optional[dict[str, Any]] = None
     content: Optional[dict[str, Any]] = None
+    type: Optional[str] = None
+    position: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,8 @@ class DocumentUpdateData:
     title: Optional[str] = None
     metadata: Optional[dict[str, Any]] = None
     content: Optional[dict[str, Any]] = None
+    type: Optional[str] = None
+    position: Optional[int] = None
 
 
 class DocumentService(BaseService):
@@ -51,10 +55,16 @@ class DocumentService(BaseService):
         user = self._ensure_user(user_id)
         payload = dict(data.metadata) if data.metadata is not None else {}
         content = dict(data.content) if data.content is not None else {}
+        # 计算 position（如果未提供），按 type 分组递增
+        position = data.position
+        if position is None:
+            position = self._repo.next_position(data.type)
         document = Document(
             title=data.title,
             metadata_=payload,
             content=content,
+            type=data.type,
+            position=position,
             created_by=user,
             updated_by=user,
         )
@@ -87,6 +97,10 @@ class DocumentService(BaseService):
             document.metadata_ = dict(data.metadata)
         if data.content is not None:
             document.content = dict(data.content)
+        if data.type is not None:
+            document.type = data.type
+        if data.position is not None:
+            document.position = int(data.position)
         document.updated_by = user
         self.session.flush()
         snapshot = self._versions.build_snapshot_from_document(document)
@@ -105,9 +119,9 @@ class DocumentService(BaseService):
         self._commit()
 
     def list_documents(
-        self, *, page: int, size: int, include_deleted: bool = False
+        self, *, page: int, size: int, include_deleted: bool = False, doc_type: str | None = None
     ) -> tuple[list[Document], int]:
-        return self._repo.paginate_documents(page, size, include_deleted)
+        return self._repo.paginate_documents(page, size, include_deleted, doc_type)
 
     def restore_document(self, document_id: int, *, user_id: str) -> Document:
         user = self._ensure_user(user_id)
