@@ -35,6 +35,7 @@ class DocumentRepository:
         metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
+        doc_ids: Sequence[int] | None = None,
     ) -> tuple[list[Document], int]:
         base_stmt = select(Document)
         count_stmt = select(func.count()).select_from(Document)
@@ -55,6 +56,9 @@ class DocumentRepository:
         if doc_type is not None:
             base_stmt = base_stmt.where(Document.type == doc_type)
             count_stmt = count_stmt.where(Document.type == doc_type)
+        if doc_ids:
+            base_stmt = base_stmt.where(Document.id.in_(doc_ids))
+            count_stmt = count_stmt.where(Document.id.in_(doc_ids))
         base_stmt = (
             base_stmt.order_by(Document.position.asc(), Document.id.asc())
             .offset((page - 1) * size)

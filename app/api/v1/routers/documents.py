@@ -191,6 +191,7 @@ def list_documents(
     include_deleted: bool = False,
     search: str | None = Query(default=None, alias="query"),
     type: str | None = Query(default=None),
+    ids: list[int] | None = Query(default=None, alias="id"),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
@@ -203,6 +204,7 @@ def list_documents(
         metadata_filters=metadata_filters or None,
         search_query=search,
         doc_type=type,
+        doc_ids=ids or None,
     )
     return {"page": page, "size": size, "total": total, "items": items}
 
