@@ -119,7 +119,12 @@ class DocumentService(BaseService):
         self._commit()
 
     def list_documents(
-        self, *, page: int, size: int, include_deleted: bool = False, doc_type: str | None = None
+        self,
+        *,
+        page: int,
+        size: int,
+        include_deleted: bool = False,
+        doc_type: str | None = None,
     ) -> tuple[list[Document], int]:
         return self._repo.paginate_documents(page, size, include_deleted, doc_type)
 
