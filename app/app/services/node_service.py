@@ -300,11 +300,18 @@ class NodeService(BaseService):
         return sequence
 
     def list_nodes(
-        self, *, page: int, size: int, include_deleted: bool = False, node_type: str | None = None
+        self,
+        *,
+        page: int,
+        size: int,
+        include_deleted: bool = False,
+        node_type: str | None = None,
     ) -> tuple[list[Node], int]:
         return self._repo.paginate_nodes(page, size, include_deleted, node_type)
 
-    def list_children(self, node_id: int, *, depth: int, node_type: str | None = None) -> list[Node]:
+    def list_children(
+        self, node_id: int, *, depth: int, node_type: str | None = None
+    ) -> list[Node]:
         node = self._repo.get(node_id)
         if not node:
             raise NodeNotFoundError("Node not found")
