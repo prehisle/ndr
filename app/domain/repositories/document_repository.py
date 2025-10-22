@@ -41,7 +41,7 @@ class DocumentRepository:
         if not include_deleted:
             base_stmt = base_stmt.where(Document.deleted_at.is_(None))
             count_stmt = count_stmt.where(Document.deleted_at.is_(None))
-        
+
         base_stmt = apply_document_filters(
             base_stmt,
             metadata_filters=metadata_filters,

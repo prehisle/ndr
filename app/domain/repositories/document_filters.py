@@ -7,7 +7,6 @@ from sqlalchemy.sql import Select
 
 from app.infra.db.models import Document
 
-
 MetadataFilters = Mapping[str, Sequence[str]]
 
 
@@ -27,10 +26,7 @@ def apply_document_filters(
                 continue
             if key == "tags":
                 tags_expr = Document.metadata_.op("->")("tags")
-                tag_checks = [
-                    func.jsonb_exists(tags_expr, value)
-                    for value in values
-                ]
+                tag_checks = [func.jsonb_exists(tags_expr, value) for value in values]
                 if tag_checks:
                     conditions.append(or_(*tag_checks))
                 continue
