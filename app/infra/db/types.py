@@ -18,6 +18,8 @@ except ImportError:  # pragma: no cover - fallback when ltree dialect is unavail
 class _FallbackLtree(
     UserDefinedType
 ):  # pragma: no cover - exercised via integration tests
+    cache_ok = True
+
     def get_col_spec(self, **kw: Any) -> str:
         return "LTREE"
 
@@ -31,6 +33,8 @@ class _FallbackLtree(
 class _FallbackLquery(
     UserDefinedType
 ):  # pragma: no cover - exercised via integration tests
+    cache_ok = True
+
     def get_col_spec(self, **kw: Any) -> str:
         return "LQUERY"
 
