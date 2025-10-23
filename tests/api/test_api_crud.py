@@ -227,7 +227,7 @@ def test_node_crud_and_children_and_relationships():
     # Subtree documents from other_root should include the bound document
     r = client.get(f"/api/v1/nodes/{other_root_id}/subtree-documents")
     assert r.status_code == 200
-    subtree_docs = r.json()
+    subtree_docs = r.json()["items"]
     assert any(d["id"] == doc_id for d in subtree_docs)
 
     # List relationships by node
@@ -248,7 +248,7 @@ def test_node_crud_and_children_and_relationships():
     # Subtree documents after unbind should be empty
     r = client.get(f"/api/v1/nodes/{other_root_id}/subtree-documents")
     assert r.status_code == 200
-    assert r.json() == []
+    assert r.json()["items"] == []
 
     # Soft delete child node and restore
     delete_child = client.delete(
@@ -387,21 +387,21 @@ def test_subtree_documents_supports_filters():
         params={"metadata.tags": "alpha"},
     )
     assert tag_resp.status_code == 200
-    assert {doc["id"] for doc in tag_resp.json()} == {doc_alpha["id"]}
+    assert {doc["id"] for doc in tag_resp.json()["items"]} == {doc_alpha["id"]}
 
     search_resp = client.get(
         f"/api/v1/nodes/{node['id']}/subtree-documents",
         params={"query": "Beta"},
     )
     assert search_resp.status_code == 200
-    assert {doc["id"] for doc in search_resp.json()} == {doc_beta["id"]}
+    assert {doc["id"] for doc in search_resp.json()["items"]} == {doc_beta["id"]}
 
     combo_resp = client.get(
         f"/api/v1/nodes/{node['id']}/subtree-documents",
         params={"metadata.stage": "draft", "query": "Alpha"},
     )
     assert combo_resp.status_code == 200
-    assert {doc["id"] for doc in combo_resp.json()} == {doc_alpha["id"]}
+    assert {doc["id"] for doc in combo_resp.json()["items"]} == {doc_alpha["id"]}
 
 
 def test_children_type_filter_and_traversal():
@@ -511,7 +511,7 @@ def test_subtree_documents_include_descendants_toggle():
         f"/api/v1/nodes/{root['id']}/subtree-documents",
     )
     assert all_docs.status_code == 200
-    assert {doc["id"] for doc in all_docs.json()} == {
+    assert {doc["id"] for doc in all_docs.json()["items"]} == {
         root_doc["id"],
         child_doc["id"],
     }
@@ -521,7 +521,7 @@ def test_subtree_documents_include_descendants_toggle():
         params={"include_descendants": "false"},
     )
     assert direct_docs.status_code == 200
-    assert {doc["id"] for doc in direct_docs.json()} == {root_doc["id"]}
+    assert {doc["id"] for doc in direct_docs.json()["items"]} == {root_doc["id"]}
 
 
 def test_create_node_with_missing_parent_returns_404():
@@ -843,7 +843,10 @@ def test_subtree_documents_type_filter():
         params={"type": "spec"},
     )
     assert r_spec.status_code == 200
-    assert {d["id"] for d in r_spec.json()} == {root_doc["id"], child_doc2["id"]}
+    assert {d["id"] for d in r_spec.json()["items"]} == {
+        root_doc["id"],
+        child_doc2["id"],
+    }
 
     # include_descendants=false 时仅返回直属文档
     r_spec_direct = client.get(
@@ -851,7 +854,7 @@ def test_subtree_documents_type_filter():
         params={"type": "spec", "include_descendants": "false"},
     )
     assert r_spec_direct.status_code == 200
-    assert {d["id"] for d in r_spec_direct.json()} == {root_doc["id"]}
+    assert {d["id"] for d in r_spec_direct.json()["items"]} == {root_doc["id"]}
 
     # type=note 仅返回子节点的 note 文档
     r_note = client.get(
@@ -859,39 +862,93 @@ def test_subtree_documents_type_filter():
         params={"type": "note"},
     )
     assert r_note.status_code == 200
-    assert {d["id"] for d in r_note.json()} == {child_doc1["id"]}
+    assert {d["id"] for d in r_note.json()["items"]} == {child_doc1["id"]}
 
 
-def test_list_documents_filters_by_id():
+def test_subtree_documents_filters_by_id():
     app = create_app()
     client = TestClient(app)
-    headers = {"X-User-Id": "id-filter"}
+    headers = {"X-User-Id": "filter-id"}
 
+    # 创建节点：root 与其子节点 child
+    root = client.post(
+        "/api/v1/nodes",
+        json={"name": "RootId", "slug": "root-id"},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/nodes",
+        json={"name": "ChildId", "slug": "child-id", "parent_path": "root-id"},
+        headers=headers,
+    ).json()
+
+    # 创建 4 个文档，其中 doc4 不绑定到任何节点
     d1 = client.post(
         "/api/v1/documents",
-        json={"title": "D1", "metadata": {}, "content": {}},
+        json={"title": "Doc1", "metadata": {}, "content": {}},
         headers=headers,
     ).json()
     d2 = client.post(
         "/api/v1/documents",
-        json={"title": "D2", "metadata": {}, "content": {}},
+        json={"title": "Doc2", "metadata": {}, "content": {}},
         headers=headers,
     ).json()
     d3 = client.post(
         "/api/v1/documents",
-        json={"title": "D3", "metadata": {}, "content": {}},
+        json={"title": "Doc3", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    d4 = client.post(
+        "/api/v1/documents",
+        json={"title": "Doc4", "metadata": {}, "content": {}},
         headers=headers,
     ).json()
 
-    # 通过重复 id 参数过滤出 d1 和 d3
+    # 绑定：d1 到 root；d2、d3 到 child；d4 不绑定
+    assert (
+        client.post(
+            f"/api/v1/nodes/{root['id']}/bind/{d1['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{d2['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{d3['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+
+    # 1) include_descendants=True（默认）：按 id 过滤，返回 d1 与 d3；包含一个不存在的ID不影响结果
     resp = client.get(
-        "/api/v1/documents",
-        params=[("id", d1["id"]), ("id", d3["id"])],
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params=[("id", d1["id"]), ("id", d3["id"]), ("id", 999999)],
     )
     assert resp.status_code == 200
-    data = resp.json()
-    ids = {item["id"] for item in data["items"]}
+    ids = {doc["id"] for doc in resp.json()["items"]}
     assert ids == {d1["id"], d3["id"]}
+
+    # 2) include_descendants=False：仅返回根节点绑定的文档（d1）
+    resp2 = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params=[("id", d1["id"]), ("id", d3["id"]), ("include_descendants", False)],
+    )
+    assert resp2.status_code == 200
+    ids2 = {doc["id"] for doc in resp2.json()["items"]}
+    assert ids2 == {d1["id"]}
+
+    # 3) 传入未绑定到子树的文档ID（d4），应返回空列表
+    resp3 = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params=[("id", d4["id"])],
+    )
+    assert resp3.status_code == 200
+    assert resp3.json()["items"] == []
 
     # 混合一个不存在的 id 也不影响返回现有匹配项
     resp2 = client.get(
@@ -901,3 +958,77 @@ def test_list_documents_filters_by_id():
     assert resp2.status_code == 200
     ids2 = {item["id"] for item in resp2.json()["items"]}
     assert ids2 == {d2["id"]}
+
+
+def test_subtree_documents_pagination():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "paginate"}
+
+    root = client.post(
+        "/api/v1/nodes",
+        json={"name": "RootPag", "slug": "root-pag"},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/nodes",
+        json={"name": "ChildPag", "slug": "child-pag", "parent_path": "root-pag"},
+        headers=headers,
+    ).json()
+
+    docs = []
+    for i in range(5):
+        resp = client.post(
+            "/api/v1/documents",
+            json={"title": f"Doc{i+1}", "metadata": {}, "content": {}},
+            headers=headers,
+        )
+        assert resp.status_code == 201
+        docs.append(resp.json())
+
+    assert (
+        client.post(
+            f"/api/v1/nodes/{root['id']}/bind/{docs[0]['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    for d in docs[1:]:
+        assert (
+            client.post(
+                f"/api/v1/nodes/{child['id']}/bind/{d['id']}",
+                headers=headers,
+            ).status_code
+            == 200
+        )
+
+    r1 = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"page": 1, "size": 3},
+    )
+    assert r1.status_code == 200
+    body1 = r1.json()
+    assert body1["page"] == 1 and body1["size"] == 3 and body1["total"] == 5
+    ids1 = [d["id"] for d in body1["items"]]
+    assert len(ids1) == 3
+
+    r2 = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"page": 2, "size": 3},
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["page"] == 2 and body2["size"] == 3 and body2["total"] == 5
+    ids2 = [d["id"] for d in body2["items"]]
+    assert len(ids2) == 2
+
+    assert set(ids1) | set(ids2) == {d["id"] for d in docs}
+
+    r3 = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"include_descendants": "false", "page": 1, "size": 10},
+    )
+    assert r3.status_code == 200
+    body3 = r3.json()
+    assert body3["total"] == 1
+    assert {d["id"] for d in body3["items"]} == {docs[0]["id"]}

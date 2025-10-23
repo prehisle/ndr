@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, get_request_context, require_admin_key
-from app.api.v1.schemas.documents import DocumentOut
+from app.api.v1.schemas.documents import DocumentsPage
 from app.api.v1.schemas.nodes import (
     NodeCreate,
     NodeOut,
@@ -299,30 +299,37 @@ def list_children(
         raise HTTPException(status_code=501, detail=str(exc)) from exc
 
 
-@router.get("/nodes/{id}/subtree-documents", response_model=list[DocumentOut])
+@router.get("/nodes/{id}/subtree-documents", response_model=DocumentsPage)
 def get_subtree_documents(
     request: Request,
     id: int,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
     include_deleted_nodes: bool = Query(default=False),
     include_deleted_documents: bool = Query(default=False),
     include_descendants: bool = Query(default=True),
     search: str | None = Query(default=None, alias="query"),
     type: str | None = Query(default=None),
+    doc_ids: list[int] | None = Query(default=None, alias="id"),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     node_service = services.node()
     metadata_filters = _extract_metadata_filters(request)
     try:
-        return node_service.get_subtree_documents(
+        items, total = node_service.paginate_subtree_documents(
             id,
+            page=page,
+            size=size,
             include_deleted_nodes=include_deleted_nodes,
             include_deleted_documents=include_deleted_documents,
             include_descendants=include_descendants,
             metadata_filters=metadata_filters or None,
             search_query=search,
             doc_type=type,
+            doc_ids=doc_ids,
         )
+        return {"page": page, "size": size, "total": total, "items": items}
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LtreeNotAvailableError as exc:

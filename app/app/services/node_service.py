@@ -378,6 +378,7 @@ class NodeService(BaseService):
         metadata_filters: Mapping[str, Sequence[str]] | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
+        doc_ids: Sequence[int] | None = None,
     ) -> list[Document]:
         node = self._repo.get(node_id)
         if not node or (node.deleted_at is not None and not include_deleted_nodes):
@@ -401,5 +402,48 @@ class NodeService(BaseService):
             metadata_filters=metadata_filters,
             search_query=search_query,
             doc_type=doc_type,
+            doc_ids=doc_ids,
         )
         return documents
+
+    def paginate_subtree_documents(
+        self,
+        node_id: int,
+        *,
+        page: int,
+        size: int,
+        include_deleted_nodes: bool = False,
+        include_deleted_documents: bool = False,
+        include_descendants: bool = True,
+        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        search_query: str | None = None,
+        doc_type: str | None = None,
+        doc_ids: Sequence[int] | None = None,
+    ) -> tuple[list[Document], int]:
+        node = self._repo.get(node_id)
+        if not node or (node.deleted_at is not None and not include_deleted_nodes):
+            raise NodeNotFoundError("Node not found")
+
+        node_ids: set[int]
+        if include_descendants:
+            self._repo.require_ltree()
+            subtree_nodes = self._repo.fetch_subtree(
+                node.path, include_deleted=include_deleted_nodes
+            )
+            node_ids = {n.id for n in subtree_nodes}
+            node_ids.add(node.id)
+        else:
+            node_ids = {node.id}
+
+        items, total = self._relationships.paginate_documents_for_nodes(
+            sorted(node_ids),
+            page=page,
+            size=size,
+            include_deleted_relations=include_deleted_nodes,
+            include_deleted_documents=include_deleted_documents,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+            doc_type=doc_type,
+            doc_ids=doc_ids,
+        )
+        return items, total
