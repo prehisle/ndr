@@ -723,3 +723,502 @@ def test_node_path_and_sibling_name_uniqueness():
     assert rebind_resp.status_code == 200
     rels = client.get(f"/api/v1/relationships?node_id={child_id}").json()
     assert len(rels) == 1
+
+
+def test_children_type_filter_and_traversal():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "u-type"}
+
+    # 创建根节点
+    root = client.post(
+        "/api/v1/nodes",
+        json={"name": "RootT", "slug": "root-t"},
+        headers=headers,
+    ).json()
+
+    # 在根下创建两个子节点，类型不同
+    child_a = client.post(
+        "/api/v1/nodes",
+        json={
+            "name": "A",
+            "slug": "a",
+            "parent_path": "root-t",
+            "type": "document",
+        },
+        headers=headers,
+    ).json()
+    child_b = client.post(
+        "/api/v1/nodes",
+        json={
+            "name": "B",
+            "slug": "b",
+            "parent_path": "root-t",
+            "type": "folder",
+        },
+        headers=headers,
+    ).json()
+
+    # 在不匹配类型的子节点 A 下创建一个匹配类型的孙节点 AA
+    grand_aa = client.post(
+        "/api/v1/nodes",
+        json={
+            "name": "AA",
+            "slug": "aa",
+            "parent_path": "root-t.a",
+            "type": "folder",
+        },
+        headers=headers,
+    ).json()
+
+    # 过滤 type=folder，depth=2，应包含 child_b 与 grand_aa，且遍历跨越不匹配的 A
+    resp = client.get(
+        f"/api/v1/nodes/{root['id']}/children",
+        params={"depth": 2, "type": "folder"},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    ids = [n["id"] for n in items]
+    assert ids == [child_b["id"], grand_aa["id"]]
+    # 验证父子关系
+    parent_map = {n["id"]: n["parent_id"] for n in items}
+    assert parent_map[child_b["id"]] == root["id"]
+    assert parent_map[grand_aa["id"]] == child_a["id"]
+
+
+def test_subtree_documents_include_descendants_toggle():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "toggle"}
+
+    root = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child", "parent_path": "root"},
+        headers=headers,
+    ).json()
+
+    root_doc = client.post(
+        "/api/v1/documents",
+        json={"title": "Root Doc", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    child_doc = client.post(
+        "/api/v1/documents",
+        json={"title": "Child Doc", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+
+    assert (
+        client.post(
+            f"/api/v1/nodes/{root['id']}/bind/{root_doc['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{child_doc['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+
+    all_docs = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+    )
+    assert all_docs.status_code == 200
+    assert {doc["id"] for doc in all_docs.json()} == {
+        root_doc["id"],
+        child_doc["id"],
+    }
+
+    direct_docs = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"include_descendants": "false"},
+    )
+    assert direct_docs.status_code == 200
+    assert {doc["id"] for doc in direct_docs.json()} == {root_doc["id"]}
+
+
+def test_create_node_with_missing_parent_returns_404():
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/nodes",
+        json={"name": "Orphan", "slug": "orphan", "parent_path": "missing"},
+        headers={"X-User-Id": "tester"},
+    )
+    assert response.status_code == 404
+
+
+def test_permanent_delete_requires_admin_key():
+    app = create_app()
+    client = TestClient(app)
+
+    doc_resp = client.post(
+        "/api/v1/documents",
+        json={"title": "Doc", "metadata": {}, "content": {}},
+        headers={"X-User-Id": "author"},
+    )
+    assert doc_resp.status_code == 201
+    document_id = doc_resp.json()["id"]
+
+    node_resp = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers={"X-User-Id": "author"},
+    )
+    assert node_resp.status_code == 201
+    node_id = node_resp.json()["id"]
+
+    soft_delete_doc = client.delete(
+        f"/api/v1/documents/{document_id}",
+        headers={"X-User-Id": "deleter"},
+    )
+    assert soft_delete_doc.status_code == 204
+
+    soft_delete_node = client.delete(
+        f"/api/v1/nodes/{node_id}",
+        headers={"X-User-Id": "deleter"},
+    )
+    assert soft_delete_node.status_code == 204
+
+    # Missing admin key -> forbidden
+    assert (
+        client.delete(
+            f"/api/v1/documents/{document_id}/purge",
+            headers={"X-User-Id": "admin"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(
+            f"/api/v1/nodes/{node_id}/purge",
+            headers={"X-User-Id": "admin"},
+        ).status_code
+        == 403
+    )
+
+    admin_headers = {"X-User-Id": "admin", "X-Admin-Key": "admin-secret"}
+    assert (
+        client.delete(
+            f"/api/v1/documents/{document_id}/purge", headers=admin_headers
+        ).status_code
+        == 204
+    )
+    assert (
+        client.delete(
+            f"/api/v1/nodes/{node_id}/purge", headers=admin_headers
+        ).status_code
+        == 204
+    )
+
+    assert (
+        client.get(
+            f"/api/v1/documents/{document_id}?include_deleted=true",
+            headers={"X-User-Id": "auditor"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/nodes/{node_id}?include_deleted=true",
+            headers={"X-User-Id": "auditor"},
+        ).status_code
+        == 404
+    )
+
+
+def test_document_versions_api():
+    app = create_app()
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Versioned",
+            "metadata": {"stage": "draft"},
+            "content": {"body": "v1"},
+        },
+        headers={"X-User-Id": "author"},
+    )
+    assert create.status_code == 201
+    doc_id = create.json()["id"]
+
+    update = client.put(
+        f"/api/v1/documents/{doc_id}",
+        json={
+            "title": "Versioned v2",
+            "metadata": {"stage": "published", "approved": True},
+            "content": {"body": "v2"},
+        },
+        headers={"X-User-Id": "editor"},
+    )
+    assert update.status_code == 200
+
+    versions = client.get(f"/api/v1/documents/{doc_id}/versions")
+    assert versions.status_code == 200
+    data = versions.json()
+    assert data["total"] >= 2
+    numbers = {item["version_number"] for item in data["items"]}
+    assert numbers == {1, 2}
+
+    version_one = client.get(
+        f"/api/v1/documents/{doc_id}/versions/1",
+        params={"include_deleted_document": False},
+    )
+    assert version_one.status_code == 200
+    assert version_one.json()["title"] == "Versioned"
+
+    diff = client.get(
+        f"/api/v1/documents/{doc_id}/versions/1/diff",
+        params={"include_deleted_document": False},
+    )
+    assert diff.status_code == 200
+    diff_body = diff.json()
+    assert diff_body["metadata"]["added"]["approved"] is True
+
+    restore = client.post(
+        f"/api/v1/documents/{doc_id}/versions/1/restore",
+        headers={"X-User-Id": "restorer"},
+    )
+    assert restore.status_code == 200
+    assert restore.json()["title"] == "Versioned"
+
+
+def test_document_idempotency_key_reuses_response():
+    app = create_app()
+    client = TestClient(app)
+
+    headers = {"X-User-Id": "u1", "Idempotency-Key": "doc-create-1"}
+    payload = {
+        "title": "Spec C",
+        "metadata": {"type": "spec"},
+        "content": {"body": "spec"},
+    }
+    r1 = client.post("/api/v1/documents", json=payload, headers=headers)
+    assert r1.status_code == 201
+    created = r1.json()
+
+    # 重新提交相同请求，应复用原响应，不重复创建
+    r2 = client.post("/api/v1/documents", json=payload, headers=headers)
+    assert r2.status_code == 201
+    assert r2.json() == created
+
+    # 同一 Key 但不同内容 -> 409 冲突
+    r3 = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Spec D",
+            "metadata": {"type": "spec"},
+            "content": {"body": "spec"},
+        },
+        headers=headers,
+    )
+    assert r3.status_code == 409
+
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        total = session.scalar(select(func.count()).select_from(Document))
+        assert total == 1
+
+
+def test_node_path_and_sibling_name_uniqueness():
+    app = create_app()
+    client = TestClient(app)
+
+    headers = {"X-User-Id": "u1"}
+
+    # Create root node
+    r_root = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers=headers,
+    )
+    assert r_root.status_code == 201
+
+    # Duplicate path (same slug under root) -> 409
+    r_dup_path = client.post(
+        "/api/v1/nodes",
+        json={"name": "Another Root", "slug": "root"},
+        headers=headers,
+    )
+    assert r_dup_path.status_code == 409
+
+    # Create child under root
+    r_child = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child", "parent_path": "root"},
+        headers=headers,
+    )
+    assert r_child.status_code == 201
+
+    # Moving root under its descendant should be rejected
+    root_id = r_root.json()["id"]
+    r_invalid_move = client.put(
+        f"/api/v1/nodes/{root_id}",
+        json={"parent_path": "root.child"},
+        headers=headers,
+    )
+    assert r_invalid_move.status_code == 400
+
+    # Same parent, same name -> 409 even with different slug
+    r_dup_name = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child-2", "parent_path": "root"},
+        headers=headers,
+    )
+    assert r_dup_name.status_code == 409
+
+    # Same name under different parent should succeed
+    r_other_root = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "other-root"},
+        headers=headers,
+    )
+    assert r_other_root.status_code == 201
+
+    # Soft-delete relationship and rebind reuse existing
+    child_id = r_child.json()["id"]
+    doc_resp = client.post(
+        "/api/v1/documents", json={"title": "Doc", "metadata": {}}, headers=headers
+    )
+    doc_id = doc_resp.json()["id"]
+    bind_resp = client.post(f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers)
+    assert bind_resp.status_code == 200
+
+    unbind_resp = client.delete(
+        f"/api/v1/nodes/{child_id}/unbind/{doc_id}", headers=headers
+    )
+    assert unbind_resp.status_code == 200
+
+    # Rebind should reopen existing relation (not create duplicate)
+    rebind_resp = client.post(
+        f"/api/v1/nodes/{child_id}/bind/{doc_id}", headers=headers
+    )
+    assert rebind_resp.status_code == 200
+    rels = client.get(f"/api/v1/relationships?node_id={child_id}").json()
+    assert len(rels) == 1
+
+
+def test_subtree_documents_type_filter():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "type-docs"}
+
+    root = client.post(
+        "/api/v1/nodes",
+        json={"name": "TRoot", "slug": "t-root"},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/nodes",
+        json={"name": "TChild", "slug": "t-child", "parent_path": "t-root"},
+        headers=headers,
+    ).json()
+
+    root_doc = client.post(
+        "/api/v1/documents",
+        json={"title": "Root Spec", "type": "spec", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    child_doc1 = client.post(
+        "/api/v1/documents",
+        json={"title": "Child Note", "type": "note", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    child_doc2 = client.post(
+        "/api/v1/documents",
+        json={"title": "Child Spec", "type": "spec", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+
+    assert (
+        client.post(
+            f"/api/v1/nodes/{root['id']}/bind/{root_doc['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{child_doc1['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/nodes/{child['id']}/bind/{child_doc2['id']}", headers=headers
+        ).status_code
+        == 200
+    )
+
+    # type=spec 默认包含后代
+    r_spec = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"type": "spec"},
+    )
+    assert r_spec.status_code == 200
+    assert {d["id"] for d in r_spec.json()} == {root_doc["id"], child_doc2["id"]}
+
+    # include_descendants=false 时仅返回直属文档
+    r_spec_direct = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"type": "spec", "include_descendants": "false"},
+    )
+    assert r_spec_direct.status_code == 200
+    assert {d["id"] for d in r_spec_direct.json()} == {root_doc["id"]}
+
+    # type=note 仅返回子节点的 note 文档
+    r_note = client.get(
+        f"/api/v1/nodes/{root['id']}/subtree-documents",
+        params={"type": "note"},
+    )
+    assert r_note.status_code == 200
+    assert {d["id"] for d in r_note.json()} == {child_doc1["id"]}
+
+
+def test_list_documents_filters_by_id():
+    app = create_app()
+    client = TestClient(app)
+    headers = {"X-User-Id": "id-filter"}
+
+    d1 = client.post(
+        "/api/v1/documents",
+        json={"title": "D1", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    d2 = client.post(
+        "/api/v1/documents",
+        json={"title": "D2", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+    d3 = client.post(
+        "/api/v1/documents",
+        json={"title": "D3", "metadata": {}, "content": {}},
+        headers=headers,
+    ).json()
+
+    # 通过重复 id 参数过滤出 d1 和 d3
+    resp = client.get(
+        "/api/v1/documents",
+        params=[("id", d1["id"]), ("id", d3["id"])],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {item["id"] for item in data["items"]}
+    assert ids == {d1["id"], d3["id"]}
+
+    # 混合一个不存在的 id 也不影响返回现有匹配项
+    resp2 = client.get(
+        "/api/v1/documents",
+        params=[("id", d1["id"]), ("id", 999999)],
+    )
+    assert resp2.status_code == 200
+    ids2 = {item["id"] for item in resp2.json()["items"]}
+    assert ids2 == {d1["id"]}

@@ -167,3 +167,39 @@ def test_purge_document_requires_soft_delete(session):
     with pytest.raises(DocumentNotFoundError):
         document_service.get_document(document.id, include_deleted=True)
     assert relationship_service.list(document_id=document.id) == []
+
+
+def test_list_documents_filters_by_ids_and_type(session):
+    service = DocumentService(session)
+
+    d1 = service.create_document(
+        DocumentCreateData(title="D1", metadata={}, content={}, type="spec"),
+        user_id="u",
+    )
+    d2 = service.create_document(
+        DocumentCreateData(title="D2", metadata={}, content={}, type="note"),
+        user_id="u",
+    )
+    d3 = service.create_document(
+        DocumentCreateData(title="D3", metadata={}, content={}, type="spec"),
+        user_id="u",
+    )
+
+    # 按类型过滤
+    items_spec, total_spec = service.list_documents(page=1, size=10, doc_type="spec")
+    assert total_spec == 2
+    assert {d.id for d in items_spec} == {d1.id, d3.id}
+
+    # 按 ID 过滤
+    items_ids, total_ids = service.list_documents(
+        page=1, size=10, doc_ids=(d1.id, d2.id)
+    )
+    assert total_ids == 2
+    assert {d.id for d in items_ids} == {d1.id, d2.id}
+
+    # 组合过滤：类型 + ID，仅返回交集
+    items_combo, total_combo = service.list_documents(
+        page=1, size=10, doc_type="spec", doc_ids=(d2.id, d3.id)
+    )
+    assert total_combo == 1
+    assert {d.id for d in items_combo} == {d3.id}

@@ -288,3 +288,32 @@ def test_node_service_restore(session):
     # 再次恢复保持幂等
     restored_again = service.restore_node(node.id, user_id="restorer")
     assert restored_again.deleted_at is None
+
+
+def test_list_children_filters_by_type(session):
+    service = NodeService(session)
+
+    root = service.create_node(
+        NodeCreateData(name="RootT", slug="root-t", parent_path=None, type=None),
+        user_id="owner",
+    )
+    child_a = service.create_node(
+        NodeCreateData(name="A", slug="a", parent_path=root.path, type="document"),
+        user_id="owner",
+    )
+    child_b = service.create_node(
+        NodeCreateData(name="B", slug="b", parent_path=root.path, type="folder"),
+        user_id="owner",
+    )
+    grand_aa = service.create_node(
+        NodeCreateData(name="AA", slug="aa", parent_path=child_a.path, type="folder"),
+        user_id="owner",
+    )
+
+    # 过滤 type=folder，depth=2，期望返回 child_b 与 grand_aa
+    items = service.list_children(root.id, depth=2, node_type="folder")
+    ids = [n.id for n in items]
+    assert ids == [child_b.id, grand_aa.id]
+    parent_map = {n.id: n.parent_id for n in items}
+    assert parent_map[child_b.id] == root.id
+    assert parent_map[grand_aa.id] == child_a.id
