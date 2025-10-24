@@ -128,9 +128,10 @@ class Authenticator:
         *,
         source: str,
     ) -> Principal:
-        user_id = (
-            fallback_user_id if fallback_user_id not in (None, "") else "<missing>"
-        )
+        if fallback_user_id in (None, ""):
+            user_id = "<missing>"
+        else:
+            user_id = fallback_user_id
         roles = frozenset(self._settings.AUTH_DEFAULT_ROLES)
         permissions = frozenset(self._settings.AUTH_DEFAULT_PERMISSIONS or ["*"])
         return Principal(
