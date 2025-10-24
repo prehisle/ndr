@@ -3,6 +3,7 @@ from typing import Generator
 
 from fastapi import Header, HTTPException
 
+from app.common.auth import build_auth_context
 from app.common.config import get_settings
 from app.infra.db.session import get_session_factory
 
@@ -23,12 +24,7 @@ def get_request_context(
     x_user_id: str | None = Header(default=None),
     x_request_id: str | None = Header(default=None),
 ):
-    user_id = x_user_id if x_user_id not in (None, "") else "<missing>"
-    return {
-        "user_id": user_id,
-        "request_id": x_request_id,
-        "user_supplied": x_user_id if x_user_id is not None else None,
-    }
+    return build_auth_context(x_user_id=x_user_id, x_request_id=x_request_id)
 
 
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:

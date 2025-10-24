@@ -6,6 +6,7 @@ from fastapi import Request
 from starlette.concurrency import iterate_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.common.auth import ensure_request_id_header, resolve_user_id
 from app.common.config import get_settings
 from app.infra.observability.metrics import LATENCY, REQUESTS
 
@@ -51,7 +52,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             elapsed = time.perf_counter() - start
             logger = logging.getLogger("http")
-            user_id = request.headers.get("X-User-Id") or "<missing>"
+            user_id = resolve_user_id(request.headers.get("X-User-Id"))
             logger.exception(
                 "request_error method=%s route=%s status=%s duration_ms=%.3f "
                 "request_id=%s user_id=%s client_ip=%s query=%s user_agent=%s referer=%s",
@@ -95,13 +96,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         LATENCY.labels(request.method, route).observe(elapsed)
 
         # ensure request-id propagation
-        if "X-Request-Id" not in response.headers:
-            response.headers["X-Request-Id"] = request_id
+        ensure_request_id_header(response.headers, request_id)
 
         # structured log with correlation id
         logger = logging.getLogger("http")
-        user_header = request.headers.get("X-User-Id")
-        user_id = user_header if user_header not in (None, "") else "<missing>"
+        user_id = resolve_user_id(request.headers.get("X-User-Id"))
         level = logging.INFO
         if status_code >= 500:
             level = logging.ERROR

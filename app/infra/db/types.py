@@ -8,9 +8,7 @@ from sqlalchemy.sql.elements import BindParameter
 from sqlalchemy.types import String, TypeDecorator, UserDefinedType
 
 try:  # Optional dependency; SQLAlchemy does not import ltree by default.
-    from sqlalchemy.dialects.postgresql import (
-        ltree as _pg_ltree,  # type: ignore[attr-defined]
-    )
+    from sqlalchemy.dialects.postgresql import ltree as _pg_ltree  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover - fallback when ltree dialect is unavailable
     _pg_ltree = None
 
