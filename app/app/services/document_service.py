@@ -205,11 +205,8 @@ class DocumentService(BaseService):
         except DocumentVersionNotFoundError as exc:
             raise DocumentNotFoundError(str(exc)) from exc
 
-        # Capture current state before mutation
+        # Capture current state before mutation to compute change summary
         current_snapshot = self._versions.build_snapshot_from_document(document)
-        self._versions.record_snapshot(
-            current_snapshot, user_id=user, operation="pre-restore"
-        )
 
         target_snapshot = self._versions.snapshot_from_version(target_version)
         document.title = target_snapshot.title
