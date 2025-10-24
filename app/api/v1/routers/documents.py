@@ -4,7 +4,13 @@ from typing import DefaultDict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db, get_request_context, require_admin_key
+from app.api.v1.deps import (
+    get_db,
+    get_request_context,
+    require_admin_key,
+    require_permission,
+)
+from app.common.permissions import Permissions
 from app.api.v1.schemas.document_versions import (
     DocumentVersionDiff,
     DocumentVersionOut,
@@ -45,7 +51,10 @@ def _extract_metadata_filters(request: Request) -> dict[str, list[str]]:
 
 
 @router.post(
-    "/documents", response_model=DocumentOut, status_code=status.HTTP_201_CREATED
+    "/documents",
+    response_model=DocumentOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_WRITE))],
 )
 def create_document(
     request: Request,
@@ -81,7 +90,11 @@ def create_document(
     return result.response
 
 
-@router.get("/documents/trash", response_model=DocumentsPage)
+@router.get(
+    "/documents/trash",
+    response_model=DocumentsPage,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_READ))],
+)
 def list_deleted_documents(
     request: Request,
     page: int = Query(default=1, ge=1),
@@ -105,7 +118,11 @@ def list_deleted_documents(
     return {"page": page, "size": size, "total": total, "items": items}
 
 
-@router.get("/documents/{id}", response_model=DocumentOut)
+@router.get(
+    "/documents/{id}",
+    response_model=DocumentOut,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_READ))],
+)
 def get_document(id: int, db: Session = Depends(get_db), include_deleted: bool = False):
     services = get_service_bundle(db)
     document_service = services.document()
@@ -115,7 +132,11 @@ def get_document(id: int, db: Session = Depends(get_db), include_deleted: bool =
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.put("/documents/{id}", response_model=DocumentOut)
+@router.put(
+    "/documents/{id}",
+    response_model=DocumentOut,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_WRITE))],
+)
 def update_document(
     request: Request,
     id: int,
@@ -157,7 +178,11 @@ def update_document(
     return result.response
 
 
-@router.delete("/documents/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/documents/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_WRITE))],
+)
 def soft_delete_document(
     id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
 ):
@@ -175,7 +200,10 @@ def soft_delete_document(
 @router.delete(
     "/documents/{id}/purge",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin_key)],
+    dependencies=[
+        Depends(require_admin_key),
+        Depends(require_permission(Permissions.DOCUMENTS_PURGE)),
+    ],
 )
 def purge_document(
     id: int,
@@ -193,7 +221,11 @@ def purge_document(
     return None
 
 
-@router.post("/documents/{id}/restore", response_model=DocumentOut)
+@router.post(
+    "/documents/{id}/restore",
+    response_model=DocumentOut,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_WRITE))],
+)
 def restore_document(
     id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
 ):
@@ -207,7 +239,11 @@ def restore_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/documents", response_model=DocumentsPage)
+@router.get(
+    "/documents",
+    response_model=DocumentsPage,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_READ))],
+)
 def list_documents(
     request: Request,
     page: int = Query(default=1, ge=1),
@@ -234,7 +270,10 @@ def list_documents(
 
 
 @router.get(
-    "/documents/{id}/versions", response_model=DocumentVersionsPage, status_code=200
+    "/documents/{id}/versions",
+    response_model=DocumentVersionsPage,
+    status_code=200,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_READ))],
 )
 def list_document_versions(
     id: int,
@@ -259,6 +298,7 @@ def list_document_versions(
     "/documents/{id}/versions/{version_number}",
     response_model=DocumentVersionOut,
     status_code=200,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_READ))],
 )
 def get_document_version(
     id: int,
@@ -283,6 +323,7 @@ def get_document_version(
     "/documents/{id}/versions/{version_number}/diff",
     response_model=DocumentVersionDiff,
     status_code=200,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_READ))],
 )
 def diff_document_version(
     id: int,
@@ -321,6 +362,7 @@ def diff_document_version(
     "/documents/{id}/versions/{version_number}/restore",
     response_model=DocumentOut,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permission(Permissions.DOCUMENTS_WRITE))],
 )
 def restore_document_version(
     id: int,

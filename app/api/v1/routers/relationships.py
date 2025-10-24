@@ -3,7 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db, get_request_context
+from app.api.v1.deps import get_db, get_request_context, require_permission
+from app.common.permissions import Permissions
 from app.api.v1.schemas.relationships import RelationshipOut
 from app.app.services import (
     DocumentNotFoundError,
@@ -21,6 +22,7 @@ router = APIRouter()
     "/relationships",
     response_model=RelationshipOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permissions.RELATIONSHIPS_WRITE))],
 )
 def bind_relationship(
     request: Request,
@@ -54,7 +56,11 @@ def bind_relationship(
     return result.response
 
 
-@router.delete("/relationships", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/relationships",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission(Permissions.RELATIONSHIPS_WRITE))],
+)
 def unbind_relationship(
     node_id: int = Query(...),
     document_id: int = Query(...),
@@ -72,7 +78,11 @@ def unbind_relationship(
     return None
 
 
-@router.get("/relationships", response_model=list[RelationshipOut])
+@router.get(
+    "/relationships",
+    response_model=list[RelationshipOut],
+    dependencies=[Depends(require_permission(Permissions.RELATIONSHIPS_READ))],
+)
 def list_relationships(
     node_id: Optional[int] = None,
     document_id: Optional[int] = None,

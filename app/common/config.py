@@ -7,6 +7,9 @@ from pathlib import Path
 
 ENV_FILE = Path(".env")
 
+DEFAULT_AUTH_ROLES: tuple[str, ...] = ("anonymous",)
+DEFAULT_AUTH_PERMISSIONS: tuple[str, ...] = ("*",)
+
 
 def _load_env_file() -> None:
     if not ENV_FILE.exists():
@@ -46,6 +49,19 @@ class Settings:
     CORS_ORIGINS: list[str] = field(default_factory=list)
     AUTO_APPLY_MIGRATIONS: bool = True
     TRACE_HTTP: bool = False
+    AUTH_ENABLED: bool = False
+    AUTH_ALLOW_ANONYMOUS: bool = False
+    AUTH_TOKEN_SECRET: str | None = None
+    AUTH_TOKEN_ALGORITHM: str = "HS256"
+    AUTH_TOKEN_AUDIENCE: str | None = None
+    AUTH_TOKEN_ISSUER: str | None = None
+    AUTH_TOKEN_LEEWAY: int = 0
+    AUTH_DEFAULT_ROLES: list[str] = field(
+        default_factory=lambda: list(DEFAULT_AUTH_ROLES)
+    )
+    AUTH_DEFAULT_PERMISSIONS: list[str] = field(
+        default_factory=lambda: list(DEFAULT_AUTH_PERMISSIONS)
+    )
 
     def __post_init__(self) -> None:
         db_scheme = self.DB_URL.split(":", 1)[0].lower()
@@ -58,6 +74,18 @@ class Settings:
     def from_environment(cls) -> "Settings":
         _load_env_file()
         db_url = os.environ.get("DB_URL", cls.DB_URL)
+        auth_default_roles_env = os.environ.get("AUTH_DEFAULT_ROLES")
+        if auth_default_roles_env is None:
+            auth_default_roles = list(DEFAULT_AUTH_ROLES)
+        else:
+            auth_default_roles = _as_list(auth_default_roles_env)
+
+        auth_default_permissions_env = os.environ.get("AUTH_DEFAULT_PERMISSIONS")
+        if auth_default_permissions_env is None:
+            auth_default_permissions = list(DEFAULT_AUTH_PERMISSIONS)
+        else:
+            auth_default_permissions = _as_list(auth_default_permissions_env)
+
         return cls(
             DB_URL=db_url,
             DB_CONNECT_TIMEOUT=int(
@@ -77,6 +105,21 @@ class Settings:
                 os.environ.get("AUTO_APPLY_MIGRATIONS"), cls.AUTO_APPLY_MIGRATIONS
             ),
             TRACE_HTTP=_as_bool(os.environ.get("TRACE_HTTP"), cls.TRACE_HTTP),
+            AUTH_ENABLED=_as_bool(os.environ.get("AUTH_ENABLED"), cls.AUTH_ENABLED),
+            AUTH_ALLOW_ANONYMOUS=_as_bool(
+                os.environ.get("AUTH_ALLOW_ANONYMOUS"), cls.AUTH_ALLOW_ANONYMOUS
+            ),
+            AUTH_TOKEN_SECRET=os.environ.get("AUTH_TOKEN_SECRET"),
+            AUTH_TOKEN_ALGORITHM=os.environ.get(
+                "AUTH_TOKEN_ALGORITHM", cls.AUTH_TOKEN_ALGORITHM
+            ),
+            AUTH_TOKEN_AUDIENCE=os.environ.get("AUTH_TOKEN_AUDIENCE"),
+            AUTH_TOKEN_ISSUER=os.environ.get("AUTH_TOKEN_ISSUER"),
+            AUTH_TOKEN_LEEWAY=int(
+                os.environ.get("AUTH_TOKEN_LEEWAY", cls.AUTH_TOKEN_LEEWAY)
+            ),
+            AUTH_DEFAULT_ROLES=auth_default_roles,
+            AUTH_DEFAULT_PERMISSIONS=auth_default_permissions,
         )
 
 

@@ -4,7 +4,13 @@ from typing import DefaultDict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db, get_request_context, require_admin_key
+from app.api.v1.deps import (
+    get_db,
+    get_request_context,
+    require_admin_key,
+    require_permission,
+)
+from app.common.permissions import Permissions
 from app.api.v1.schemas.documents import DocumentsPage
 from app.api.v1.schemas.nodes import (
     NodeCreate,
@@ -47,7 +53,12 @@ def _extract_metadata_filters(request: Request) -> dict[str, list[str]]:
     return dict(filters)
 
 
-@router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/nodes",
+    response_model=NodeOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permissions.NODES_WRITE))],
+)
 def create_node(
     request: Request,
     payload: NodeCreate,
@@ -85,7 +96,11 @@ def create_node(
     return result.response
 
 
-@router.get("/nodes/{id}", response_model=NodeOut)
+@router.get(
+    "/nodes/{id}",
+    response_model=NodeOut,
+    dependencies=[Depends(require_permission(Permissions.NODES_READ))],
+)
 def get_node(id: int, db: Session = Depends(get_db), include_deleted: bool = False):
     services = get_service_bundle(db)
     node_service = services.node()
@@ -95,7 +110,11 @@ def get_node(id: int, db: Session = Depends(get_db), include_deleted: bool = Fal
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.put("/nodes/{id}", response_model=NodeOut)
+@router.put(
+    "/nodes/{id}",
+    response_model=NodeOut,
+    dependencies=[Depends(require_permission(Permissions.NODES_WRITE))],
+)
 def update_node(
     request: Request,
     id: int,
@@ -145,7 +164,11 @@ def update_node(
     return result.response
 
 
-@router.delete("/nodes/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/nodes/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission(Permissions.NODES_WRITE))],
+)
 def soft_delete_node(
     id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
 ):
@@ -163,7 +186,10 @@ def soft_delete_node(
 @router.delete(
     "/nodes/{id}/purge",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin_key)],
+    dependencies=[
+        Depends(require_admin_key),
+        Depends(require_permission(Permissions.NODES_PURGE)),
+    ],
 )
 def purge_node(
     id: int,
@@ -183,7 +209,11 @@ def purge_node(
     return None
 
 
-@router.post("/nodes/{id}/restore", response_model=NodeOut)
+@router.post(
+    "/nodes/{id}/restore",
+    response_model=NodeOut,
+    dependencies=[Depends(require_permission(Permissions.NODES_WRITE))],
+)
 def restore_node(
     id: int, db: Session = Depends(get_db), ctx=Depends(get_request_context)
 ):
@@ -199,7 +229,11 @@ def restore_node(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/nodes", response_model=NodesPage)
+@router.get(
+    "/nodes",
+    response_model=NodesPage,
+    dependencies=[Depends(require_permission(Permissions.NODES_READ))],
+)
 def list_nodes(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
@@ -215,7 +249,11 @@ def list_nodes(
     return {"page": page, "size": size, "total": total, "items": items}
 
 
-@router.post("/nodes/reorder", response_model=list[NodeOut])
+@router.post(
+    "/nodes/reorder",
+    response_model=list[NodeOut],
+    dependencies=[Depends(require_permission(Permissions.NODES_WRITE))],
+)
 def reorder_nodes(
     payload: NodeReorderPayload,
     db: Session = Depends(get_db),
@@ -243,7 +281,10 @@ def reorder_nodes(
 
 
 # Restore relationship endpoints under nodes for compatibility
-@router.post("/nodes/{id}/bind/{doc_id}")
+@router.post(
+    "/nodes/{id}/bind/{doc_id}",
+    dependencies=[Depends(require_permission(Permissions.RELATIONSHIPS_WRITE))],
+)
 def bind_document(
     id: int,
     doc_id: int,
@@ -264,7 +305,10 @@ def bind_document(
     return {"ok": True}
 
 
-@router.delete("/nodes/{id}/unbind/{doc_id}")
+@router.delete(
+    "/nodes/{id}/unbind/{doc_id}",
+    dependencies=[Depends(require_permission(Permissions.RELATIONSHIPS_WRITE))],
+)
 def unbind_document(
     id: int,
     doc_id: int,
@@ -282,7 +326,11 @@ def unbind_document(
     return {"ok": True}
 
 
-@router.get("/nodes/{id}/children", response_model=list[NodeOut])
+@router.get(
+    "/nodes/{id}/children",
+    response_model=list[NodeOut],
+    dependencies=[Depends(require_permission(Permissions.NODES_READ))],
+)
 def list_children(
     id: int,
     depth: int = Query(default=1, ge=1),
@@ -299,7 +347,14 @@ def list_children(
         raise HTTPException(status_code=501, detail=str(exc)) from exc
 
 
-@router.get("/nodes/{id}/subtree-documents", response_model=DocumentsPage)
+@router.get(
+    "/nodes/{id}/subtree-documents",
+    response_model=DocumentsPage,
+    dependencies=[
+        Depends(require_permission(Permissions.NODES_READ)),
+        Depends(require_permission(Permissions.DOCUMENTS_READ)),
+    ],
+)
 def get_subtree_documents(
     request: Request,
     id: int,
