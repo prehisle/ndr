@@ -11,10 +11,11 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from app.infra.db.base import Base, TimestampMixin
 from app.infra.db.types import HAS_POSTGRES_LTREE, LtreeType
@@ -182,6 +183,14 @@ class DocumentVersion(Base):
     )
 
     document = relationship("Document", back_populates="versions")
+
+
+Document.version_number = column_property(
+    select(func.coalesce(func.max(DocumentVersion.version_number), 0))
+    .where(DocumentVersion.document_id == Document.id)
+    .correlate_except(DocumentVersion)
+    .scalar_subquery()
+)
 
 
 class IdempotencyRecord(Base):

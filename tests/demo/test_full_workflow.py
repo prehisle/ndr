@@ -22,6 +22,7 @@ def test_full_workflow_with_soft_delete_and_restore():
     )
     assert doc_resp.status_code == 201
     document_id = doc_resp.json()["id"]
+    assert doc_resp.json()["version_number"] == 1
 
     node_resp = client.post(
         "/api/v1/nodes",
@@ -52,6 +53,7 @@ def test_full_workflow_with_soft_delete_and_restore():
     assert doc_update.status_code == 200
     assert doc_update.json()["title"] == "Workflow Doc v2"
     assert doc_update.json()["content"]["body"] == "final"
+    assert doc_update.json()["version_number"] == 2  # 版本号应已更新
 
     node_update = client.put(
         f"/api/v1/nodes/{node_id}",
@@ -113,6 +115,7 @@ def test_full_workflow_with_soft_delete_and_restore():
         headers={"X-User-Id": "restorer"},
     )
     assert restore_doc.status_code == 200
+    assert restore_doc.json()["version_number"] >= 3
 
     # 重新绑定关系并验证恢复
     restore_bind = client.post(
@@ -178,6 +181,7 @@ def test_query_documents_with_complex_metadata():
         assert doc["metadata"] == payload["metadata"]
         assert doc["content"] == payload["content"]
         assert "metadata_" not in doc
+        assert doc["version_number"] >= 1
 
 
 def test_document_versions_diff_and_restore():
@@ -233,3 +237,4 @@ def test_document_versions_diff_and_restore():
     assert restored_doc["title"] == "Versioned Doc"
     assert restored_doc["metadata"] == {"stage": "draft"}
     assert restored_doc["content"] == {"body": "v1"}
+    assert restored_doc["version_number"] >= 3

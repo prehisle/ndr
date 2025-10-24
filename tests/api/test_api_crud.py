@@ -22,6 +22,7 @@ def test_document_crud_and_soft_delete():
     doc_id = doc["id"]
     assert doc["created_by"] == "u1"
     assert doc["metadata"] == {"type": "spec"}
+    assert doc["version_number"] == 1
 
     # Get
     r = client.get(f"/api/v1/documents/{doc_id}")
@@ -36,6 +37,7 @@ def test_document_crud_and_soft_delete():
     assert r.status_code == 200
     assert r.json()["title"] == "Spec B"
     assert r.json()["updated_by"] == "u2"
+    assert r.json()["version_number"] == 2
 
     # Soft delete
     r = client.delete(f"/api/v1/documents/{doc_id}", headers={"X-User-Id": "u3"})
@@ -48,6 +50,13 @@ def test_document_crud_and_soft_delete():
     # Get with include_deleted -> 200
     r = client.get(f"/api/v1/documents/{doc_id}?include_deleted=true")
     assert r.status_code == 200
+    assert r.json()["version_number"] == 2
+
+    trash_list = client.get("/api/v1/documents/trash")
+    assert trash_list.status_code == 200
+    trash = trash_list.json()
+    assert any(item["id"] == doc_id for item in trash["items"])
+    assert all(item["deleted_at"] is not None for item in trash["items"])
 
     # Restore
     restore = client.post(
@@ -55,7 +64,13 @@ def test_document_crud_and_soft_delete():
         headers={"X-User-Id": "u4"},
     )
     assert restore.status_code == 200
+    assert restore.json()["version_number"] >= 3
     assert client.get(f"/api/v1/documents/{doc_id}").status_code == 200
+
+    trash_after_restore_resp = client.get("/api/v1/documents/trash")
+    assert trash_after_restore_resp.status_code == 200
+    trash_after_restore = trash_after_restore_resp.json()
+    assert all(item["id"] != doc_id for item in trash_after_restore["items"])
 
 
 def test_node_crud_and_children_and_relationships():
@@ -629,6 +644,7 @@ def test_document_versions_api():
     )
     assert create.status_code == 201
     doc_id = create.json()["id"]
+    assert create.json()["version_number"] == 1
 
     update = client.put(
         f"/api/v1/documents/{doc_id}",
@@ -640,6 +656,7 @@ def test_document_versions_api():
         headers={"X-User-Id": "editor"},
     )
     assert update.status_code == 200
+    assert update.json()["version_number"] == 2
 
     versions = client.get(f"/api/v1/documents/{doc_id}/versions")
     assert versions.status_code == 200
@@ -669,6 +686,7 @@ def test_document_versions_api():
     )
     assert restore.status_code == 200
     assert restore.json()["title"] == "Versioned"
+    assert restore.json()["version_number"] >= 3
 
 
 def test_document_idempotency_key_reuses_response():
@@ -684,6 +702,7 @@ def test_document_idempotency_key_reuses_response():
     r1 = client.post("/api/v1/documents", json=payload, headers=headers)
     assert r1.status_code == 201
     created = r1.json()
+    assert created["version_number"] == 1
 
     # 重新提交相同请求，应复用原响应，不重复创建
     r2 = client.post("/api/v1/documents", json=payload, headers=headers)

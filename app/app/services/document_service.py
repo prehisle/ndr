@@ -139,6 +139,27 @@ class DocumentService(BaseService):
             doc_ids=doc_ids,
         )
 
+    def list_deleted_documents(
+        self,
+        *,
+        page: int,
+        size: int,
+        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        search_query: str | None = None,
+        doc_type: str | None = None,
+        doc_ids: Sequence[int] | None = None,
+    ) -> tuple[list[Document], int]:
+        return self._repo.paginate_documents(
+            page,
+            size,
+            include_deleted=True,
+            deleted_only=True,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+            doc_type=doc_type,
+            doc_ids=doc_ids,
+        )
+
     def restore_document(self, document_id: int, *, user_id: str) -> Document:
         user = self._ensure_user(user_id)
         document = self._repo.get(document_id)

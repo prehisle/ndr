@@ -32,6 +32,7 @@ class DocumentRepository:
         size: int,
         include_deleted: bool,
         *,
+        deleted_only: bool = False,
         metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
@@ -39,7 +40,10 @@ class DocumentRepository:
     ) -> tuple[list[Document], int]:
         base_stmt = select(Document)
         count_stmt = select(func.count()).select_from(Document)
-        if not include_deleted:
+        if deleted_only:
+            base_stmt = base_stmt.where(Document.deleted_at.is_not(None))
+            count_stmt = count_stmt.where(Document.deleted_at.is_not(None))
+        elif not include_deleted:
             base_stmt = base_stmt.where(Document.deleted_at.is_(None))
             count_stmt = count_stmt.where(Document.deleted_at.is_(None))
 
@@ -59,11 +63,8 @@ class DocumentRepository:
         if doc_ids:
             base_stmt = base_stmt.where(Document.id.in_(doc_ids))
             count_stmt = count_stmt.where(Document.id.in_(doc_ids))
-        base_stmt = (
-            base_stmt.order_by(Document.position.asc(), Document.id.asc())
-            .offset((page - 1) * size)
-            .limit(size)
-        )
+        base_stmt = base_stmt.order_by(Document.position.asc(), Document.id.asc())
+        base_stmt = base_stmt.offset((page - 1) * size).limit(size)
         items = list(self._session.execute(base_stmt).scalars())
         total = self._session.execute(count_stmt).scalar_one()
         return items, total

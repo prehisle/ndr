@@ -81,6 +81,30 @@ def create_document(
     return result.response
 
 
+@router.get("/documents/trash", response_model=DocumentsPage)
+def list_deleted_documents(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    search: str | None = Query(default=None, alias="query"),
+    type: str | None = Query(default=None),
+    ids: list[int] | None = Query(default=None, alias="id"),
+    db: Session = Depends(get_db),
+):
+    services = get_service_bundle(db)
+    document_service = services.document()
+    metadata_filters = _extract_metadata_filters(request)
+    items, total = document_service.list_deleted_documents(
+        page=page,
+        size=size,
+        metadata_filters=metadata_filters or None,
+        search_query=search,
+        doc_type=type,
+        doc_ids=ids or None,
+    )
+    return {"page": page, "size": size, "total": total, "items": items}
+
+
 @router.get("/documents/{id}", response_model=DocumentOut)
 def get_document(id: int, db: Session = Depends(get_db), include_deleted: bool = False):
     services = get_service_bundle(db)

@@ -38,9 +38,11 @@ def test_document_service_crud_flow(session):
     assert created.metadata_ == {"type": "spec"}
     assert created.content == {"body": "initial"}
     assert created.created_by == "creator"
+    assert created.version_number == 1
 
     fetched = service.get_document(created.id)
     assert fetched.id == created.id
+    assert fetched.version_number == 1
 
     updated = service.update_document(
         created.id,
@@ -55,10 +57,12 @@ def test_document_service_crud_flow(session):
     assert updated.metadata_["version"] == 2
     assert updated.content == {"body": "updated"}
     assert updated.updated_by == "editor"
+    assert updated.version_number == 2
 
     items, total = service.list_documents(page=1, size=10)
     assert total == 1
     assert items[0].id == created.id
+    assert items[0].version_number == 2
 
     service.soft_delete_document(created.id, user_id="deleter")
 
@@ -67,6 +71,12 @@ def test_document_service_crud_flow(session):
 
     deleted = service.get_document(created.id, include_deleted=True)
     assert deleted.deleted_at is not None
+    assert deleted.version_number == 2
+
+    trash_items, trash_total = service.list_deleted_documents(page=1, size=10)
+    assert trash_total == 1
+    assert trash_items[0].id == created.id
+    assert trash_items[0].version_number == 2
 
 
 def test_document_service_guards_and_not_found(session):

@@ -31,6 +31,7 @@ class DocumentOut(BaseModel):
     content: dict[str, Any] = Field(default_factory=dict)
     type: str | None = None
     position: int
+    version_number: int
     created_by: str
     updated_by: str
     created_at: datetime
