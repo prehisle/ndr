@@ -5,6 +5,7 @@ __pycache__/
 *.db
 .venv/
 .env*
+!.env.example
 *.log
 .cache/
 .coverage
