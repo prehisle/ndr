@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Mapping, Optional, Sequence
+from typing import Optional, Sequence
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
 from app.domain.repositories import NodeRepository, RelationshipRepository
+from app.domain.repositories.document_filters import MetadataFilters
 from app.domain.repositories.node_repository import LtreeNotAvailableError
 from app.infra.db.models import Document, Node, NodeDocument
 
@@ -375,7 +376,7 @@ class NodeService(BaseService):
         include_deleted_nodes: bool = False,
         include_deleted_documents: bool = False,
         include_descendants: bool = True,
-        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
         doc_ids: Sequence[int] | None = None,
@@ -415,7 +416,7 @@ class NodeService(BaseService):
         include_deleted_nodes: bool = False,
         include_deleted_documents: bool = False,
         include_descendants: bool = True,
-        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
         doc_ids: Sequence[int] | None = None,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.app.services.document_version_service import (
     DocumentVersionService,
 )
 from app.domain.repositories import DocumentRepository
+from app.domain.repositories.document_filters import MetadataFilters
 from app.infra.db.models import Document, NodeDocument
 
 
@@ -124,7 +125,7 @@ class DocumentService(BaseService):
         page: int,
         size: int,
         include_deleted: bool = False,
-        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
         doc_ids: Sequence[int] | None = None,
@@ -144,7 +145,7 @@ class DocumentService(BaseService):
         *,
         page: int,
         size: int,
-        metadata_filters: Mapping[str, Sequence[str]] | None = None,
+        metadata_filters: MetadataFilters | None = None,
         search_query: str | None = None,
         doc_type: str | None = None,
         doc_ids: Sequence[int] | None = None,

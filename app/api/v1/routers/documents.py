@@ -1,10 +1,8 @@
-from collections import defaultdict
-from typing import DefaultDict
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, get_request_context, require_admin_key
+from app.api.v1.descriptions import METADATA_FILTERS_DESCRIPTION
 from app.api.v1.schemas.document_versions import (
     DocumentVersionDiff,
     DocumentVersionOut,
@@ -16,6 +14,7 @@ from app.api.v1.schemas.documents import (
     DocumentsPage,
     DocumentUpdate,
 )
+from app.api.v1.utils import extract_metadata_filters
 from app.app.services import (
     DocumentCreateData,
     DocumentNotFoundError,
@@ -30,18 +29,6 @@ router = APIRouter()
 
 
 # Using DocumentCreate/DocumentUpdate from app.api.v1.schemas.documents
-
-
-def _extract_metadata_filters(request: Request) -> dict[str, list[str]]:
-    filters: DefaultDict[str, list[str]] = defaultdict(list)
-    for key, value in request.query_params.multi_items():
-        if not key.startswith("metadata."):
-            continue
-        field = key[len("metadata.") :].strip()
-        if not field or value in (None, ""):
-            continue
-        filters[field].append(value)
-    return dict(filters)
 
 
 @router.post(
@@ -93,7 +80,7 @@ def list_deleted_documents(
 ):
     services = get_service_bundle(db)
     document_service = services.document()
-    metadata_filters = _extract_metadata_filters(request)
+    metadata_filters = extract_metadata_filters(request)
     items, total = document_service.list_deleted_documents(
         page=page,
         size=size,
@@ -207,7 +194,11 @@ def restore_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/documents", response_model=DocumentsPage)
+@router.get(
+    "/documents",
+    response_model=DocumentsPage,
+    description=METADATA_FILTERS_DESCRIPTION,
+)
 def list_documents(
     request: Request,
     page: int = Query(default=1, ge=1),
@@ -220,7 +211,7 @@ def list_documents(
 ):
     services = get_service_bundle(db)
     document_service = services.document()
-    metadata_filters = _extract_metadata_filters(request)
+    metadata_filters = extract_metadata_filters(request)
     items, total = document_service.list_documents(
         page=page,
         size=size,

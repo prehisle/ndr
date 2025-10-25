@@ -289,17 +289,17 @@ def test_list_documents_supports_metadata_and_query_filters():
     docs = [
         {
             "title": "Alpha Spec",
-            "metadata": {"stage": "draft", "tags": ["alpha", "beta"]},
+            "metadata": {"stage": "draft", "tags": ["alpha", "beta"], "price": 15},
             "content": {"body": "Alpha entry"},
         },
         {
             "title": "Beta Spec",
-            "metadata": {"stage": "final", "tags": ["beta"]},
+            "metadata": {"stage": "final", "tags": ["beta"], "price": 40},
             "content": {"body": "Production ready"},
         },
         {
             "title": "Gamma Spec",
-            "metadata": {"stage": "draft", "tags": []},
+            "metadata": {"stage": "draft", "tags": [], "price": 5},
             "content": {"body": "Gamma notes"},
         },
     ]
@@ -330,6 +330,14 @@ def test_list_documents_supports_metadata_and_query_filters():
     multi_ids = {doc["id"] for doc in stage_multi.json()["items"]}
     assert multi_ids == set(created_ids)
 
+    # IN operator with comma-separated list
+    stage_in = client.get(
+        "/api/v1/documents",
+        params={"metadata.stage[in]": "draft,final"},
+    )
+    assert stage_in.status_code == 200
+    assert {doc["id"] for doc in stage_in.json()["items"]} == set(created_ids)
+
     # Fuzzy search across title/content
     search_resp = client.get("/api/v1/documents", params={"query": "Alpha"})
     assert search_resp.status_code == 200
@@ -345,6 +353,22 @@ def test_list_documents_supports_metadata_and_query_filters():
     assert combo_resp.status_code == 200
     combo_items = combo_resp.json()["items"]
     assert {doc["id"] for doc in combo_items} == {created_ids[2]}
+
+    # Numeric range filter (10 <= price <= 30 only returns Alpha)
+    price_resp = client.get(
+        "/api/v1/documents",
+        params={"metadata.price[gte]": "10", "metadata.price[lte]": "30"},
+    )
+    assert price_resp.status_code == 200
+    assert {doc["id"] for doc in price_resp.json()["items"]} == {created_ids[0]}
+
+    # Array containment: require both alpha/beta tags
+    tag_all_resp = client.get(
+        "/api/v1/documents",
+        params=[("metadata.tags[all]", "alpha"), ("metadata.tags[all]", "beta")],
+    )
+    assert tag_all_resp.status_code == 200
+    assert {doc["id"] for doc in tag_all_resp.json()["items"]} == {created_ids[0]}
 
 
 def test_subtree_documents_supports_filters():
@@ -367,7 +391,7 @@ def test_subtree_documents_supports_filters():
         "/api/v1/documents",
         json={
             "title": "Alpha Doc",
-            "metadata": {"stage": "draft", "tags": ["alpha"]},
+            "metadata": {"stage": "draft", "tags": ["alpha"], "score": 80},
             "content": {"body": "Alpha section"},
         },
         headers=headers,
@@ -376,7 +400,7 @@ def test_subtree_documents_supports_filters():
         "/api/v1/documents",
         json={
             "title": "Beta Doc",
-            "metadata": {"stage": "final", "tags": ["beta"]},
+            "metadata": {"stage": "final", "tags": ["beta"], "score": 40},
             "content": {"body": "Beta section"},
         },
         headers=headers,
@@ -417,6 +441,32 @@ def test_subtree_documents_supports_filters():
     )
     assert combo_resp.status_code == 200
     assert {doc["id"] for doc in combo_resp.json()["items"]} == {doc_alpha["id"]}
+
+    range_resp = client.get(
+        f"/api/v1/nodes/{node['id']}/subtree-documents",
+        params={"metadata.score[gt]": "50"},
+    )
+    assert range_resp.status_code == 200
+    assert {doc["id"] for doc in range_resp.json()["items"]} == {doc_alpha["id"]}
+
+
+def test_metadata_filters_validate_operator_and_range_values():
+    app = create_app()
+    client = TestClient(app)
+
+    invalid_op = client.get(
+        "/api/v1/documents",
+        params={"metadata.stage[invalid]": "draft"},
+    )
+    assert invalid_op.status_code == 400
+    assert "Unsupported metadata filter operator" in invalid_op.json()["detail"]
+
+    invalid_numeric = client.get(
+        "/api/v1/documents",
+        params={"metadata.price[gt]": "not-a-number"},
+    )
+    assert invalid_numeric.status_code == 400
+    assert "expects a numeric value" in invalid_numeric.json()["detail"]
 
 
 def test_children_type_filter_and_traversal():

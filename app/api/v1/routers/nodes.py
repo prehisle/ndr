@@ -1,10 +1,8 @@
-from collections import defaultdict
-from typing import DefaultDict
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, get_request_context, require_admin_key
+from app.api.v1.descriptions import SUBTREE_DOCUMENTS_DESCRIPTION
 from app.api.v1.schemas.documents import DocumentsPage
 from app.api.v1.schemas.nodes import (
     NodeCreate,
@@ -13,6 +11,7 @@ from app.api.v1.schemas.nodes import (
     NodesPage,
     NodeUpdate,
 )
+from app.api.v1.utils import extract_metadata_filters
 from app.app.services import (
     DocumentNotFoundError,
     InvalidNodeOperationError,
@@ -33,18 +32,6 @@ router = APIRouter()
 
 
 # Using NodeCreate/NodeUpdate from app.api.v1.schemas.nodes
-
-
-def _extract_metadata_filters(request: Request) -> dict[str, list[str]]:
-    filters: DefaultDict[str, list[str]] = defaultdict(list)
-    for key, value in request.query_params.multi_items():
-        if not key.startswith("metadata."):
-            continue
-        field = key[len("metadata.") :].strip()
-        if not field or value in (None, ""):
-            continue
-        filters[field].append(value)
-    return dict(filters)
 
 
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
@@ -299,7 +286,11 @@ def list_children(
         raise HTTPException(status_code=501, detail=str(exc)) from exc
 
 
-@router.get("/nodes/{id}/subtree-documents", response_model=DocumentsPage)
+@router.get(
+    "/nodes/{id}/subtree-documents",
+    response_model=DocumentsPage,
+    description=SUBTREE_DOCUMENTS_DESCRIPTION,
+)
 def get_subtree_documents(
     request: Request,
     id: int,
@@ -315,7 +306,7 @@ def get_subtree_documents(
 ):
     services = get_service_bundle(db)
     node_service = services.node()
-    metadata_filters = _extract_metadata_filters(request)
+    metadata_filters = extract_metadata_filters(request)
     try:
         items, total = node_service.paginate_subtree_documents(
             id,
