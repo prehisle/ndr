@@ -1,6 +1,8 @@
+import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from fastapi import Request
 from starlette.concurrency import iterate_in_threadpool
@@ -11,6 +13,52 @@ from app.infra.observability.metrics import LATENCY, REQUESTS
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
+    SENSITIVE_KEYS = {
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "token",
+        "access_token",
+        "refresh_token",
+        "api_key",
+        "x-api-key",
+        "authorization",
+    }
+
+    def _mask_mapping(self, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            masked: dict[str, Any] = {}
+            for k, v in obj.items():
+                if isinstance(k, str) and k.lower() in self.SENSITIVE_KEYS:
+                    masked[k] = "***"
+                else:
+                    masked[k] = self._mask_mapping(v)
+            return masked
+        if isinstance(obj, list):
+            return [self._mask_mapping(x) for x in obj]
+        return obj
+
+    def _mask_text(self, text: str) -> str:
+        # 简单文本掩码：对形如 token=xxxx 或 Authorization: Bearer xxxx 的片段进行模糊替换
+        try:
+            import re
+
+            patterns = [
+                r"(?i)(token|secret|api_key|x-api-key|password|authorization)\s*[:=]\s*[^\s]+",
+                r"(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9\-_.]+",
+            ]
+            masked = text
+            for p in patterns:
+                masked = re.sub(
+                    p,
+                    lambda m: m.group(0).split(":")[0].split("=")[0] + ": ***",
+                    masked,
+                )
+            return masked
+        except Exception:
+            return text
+
     async def dispatch(self, request: Request, call_next):
         start = time.perf_counter()
         request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
@@ -30,9 +78,20 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 raw_body = await request.body()
                 if raw_body:
                     decoded_body = raw_body.decode("utf-8", errors="replace")
-                    if len(decoded_body) > 2048:
-                        decoded_body = decoded_body[:2048] + "...<truncated>"
-                    request_body = decoded_body
+                    # JSON 尝试脱敏，否则进行基于文本的简易脱敏
+                    try:
+                        parsed = json.loads(decoded_body)
+                    except Exception:
+                        masked_text = self._mask_text(decoded_body)
+                        if len(masked_text) > 2048:
+                            masked_text = masked_text[:2048] + "...<truncated>"
+                        request_body = masked_text
+                    else:
+                        masked_obj = self._mask_mapping(parsed)
+                        masked_text = json.dumps(masked_obj, ensure_ascii=False)
+                        if len(masked_text) > 2048:
+                            masked_text = masked_text[:2048] + "...<truncated>"
+                        request_body = masked_text
 
                     async def receive():
                         return {
@@ -41,7 +100,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                             "more_body": False,
                         }
 
-                    request._receive = receive  # type: ignore[attr-defined]
+                    request._receive = receive
             except Exception:
                 request_body = "<unavailable>"
 
@@ -101,7 +160,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         # structured log with correlation id
         logger = logging.getLogger("http")
         user_header = request.headers.get("X-User-Id")
-        user_id = user_header if user_header not in (None, "") else "<missing>"
+        user_id = user_header or "<missing>"
         level = logging.INFO
         if status_code >= 500:
             level = logging.ERROR
@@ -124,9 +183,20 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 )
                 if response_body_bytes:
                     decoded_body = response_body_bytes.decode("utf-8", errors="replace")
-                    if len(decoded_body) > 2048:
-                        decoded_body = decoded_body[:2048] + "...<truncated>"
-                    response_body_str = decoded_body
+                    # JSON 尝试脱敏
+                    try:
+                        parsed = json.loads(decoded_body)
+                    except Exception:
+                        masked_text = self._mask_text(decoded_body)
+                        if len(masked_text) > 2048:
+                            masked_text = masked_text[:2048] + "...<truncated>"
+                        response_body_str = masked_text
+                    else:
+                        masked_obj = self._mask_mapping(parsed)
+                        masked_text = json.dumps(masked_obj, ensure_ascii=False)
+                        if len(masked_text) > 2048:
+                            masked_text = masked_text[:2048] + "...<truncated>"
+                        response_body_str = masked_text
             except Exception:
                 response_body_str = "<unavailable>"
 
@@ -147,7 +217,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             extra_payload["response_body"] = response_body_str
 
         logger.log(
-            level,  # type: ignore[arg-type]
+            level,
             message,
             request.method,
             route,
