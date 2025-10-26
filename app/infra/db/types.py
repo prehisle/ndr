@@ -25,7 +25,9 @@ class _FallbackLtree(
     def bind_processor(self, dialect: Any) -> Callable[[Any], Any] | None:
         return lambda value: value
 
-    def result_processor(self, dialect: Any, coltype: Any) -> Callable[[Any], Any] | None:
+    def result_processor(
+        self, dialect: Any, coltype: Any
+    ) -> Callable[[Any], Any] | None:
         return lambda value: value
 
 
@@ -40,7 +42,9 @@ class _FallbackLquery(
     def bind_processor(self, dialect: Any) -> Callable[[Any], Any] | None:
         return lambda value: value
 
-    def result_processor(self, dialect: Any, coltype: Any) -> Callable[[Any], Any] | None:
+    def result_processor(
+        self, dialect: Any, coltype: Any
+    ) -> Callable[[Any], Any] | None:
         return lambda value: value
 
 
