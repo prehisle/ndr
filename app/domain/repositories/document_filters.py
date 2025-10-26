@@ -6,6 +6,7 @@ from typing import Sequence
 
 from sqlalchemy import Float, Text, and_, cast, func, or_
 from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.infra.db.models import Document
 
@@ -57,7 +58,9 @@ def apply_document_filters(
     return stmt
 
 
-def _build_metadata_condition(clause: MetadataFilterClause):
+def _build_metadata_condition(
+    clause: MetadataFilterClause,
+) -> ColumnElement[bool] | None:
     if not clause.values:
         return None
 
@@ -79,7 +82,9 @@ def _build_metadata_condition(clause: MetadataFilterClause):
     return _build_equals_condition(clause)
 
 
-def _build_array_condition(clause: MetadataFilterClause, *, match_all: bool):
+def _build_array_condition(
+    clause: MetadataFilterClause, *, match_all: bool
+) -> ColumnElement[bool] | None:
     field_expr = Document.metadata_.op("->")(clause.field)
     checks = [func.jsonb_exists(field_expr, value) for value in clause.values]
     if not checks:
@@ -90,7 +95,7 @@ def _build_array_condition(clause: MetadataFilterClause, *, match_all: bool):
     return combiner(*checks)
 
 
-def _build_like_condition(clause: MetadataFilterClause):
+def _build_like_condition(clause: MetadataFilterClause) -> ColumnElement[bool] | None:
     value_expr = cast(Document.metadata_.op("->>")(clause.field), Text)
     checks = []
     for value in clause.values:
@@ -103,7 +108,9 @@ def _build_like_condition(clause: MetadataFilterClause):
     return or_(*checks)
 
 
-def _build_not_equals_condition(clause: MetadataFilterClause):
+def _build_not_equals_condition(
+    clause: MetadataFilterClause,
+) -> ColumnElement[bool] | None:
     value_expr = cast(Document.metadata_.op("->>")(clause.field), Text)
     checks = [value_expr != value for value in clause.values]
     if not checks:
@@ -113,7 +120,7 @@ def _build_not_equals_condition(clause: MetadataFilterClause):
     return and_(*checks)
 
 
-def _build_numeric_condition(clause: MetadataFilterClause):
+def _build_numeric_condition(clause: MetadataFilterClause) -> ColumnElement[bool]:
     if len(clause.values) != 1:
         raise ValueError("Range operator expects a single comparison value")
     numeric_value = _parse_numeric_value(clause.values[0])
@@ -130,7 +137,9 @@ def _build_numeric_condition(clause: MetadataFilterClause):
     raise ValueError(f"Unsupported numeric operator: {clause.operator}")
 
 
-def _build_equals_condition(clause: MetadataFilterClause):
+def _build_equals_condition(
+    clause: MetadataFilterClause,
+) -> ColumnElement[bool] | None:
     if clause.operator == "in":
         value_expr = cast(Document.metadata_.op("->>")(clause.field), Text)
         return value_expr.in_(clause.values)
