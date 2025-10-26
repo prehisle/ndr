@@ -7,9 +7,9 @@ from starlette.requests import Request
 
 from app.domain.repositories.document_filters import (
     LIST_VALUE_OPERATORS,
-    MetadataFilterClause,
     RANGE_OPERATORS,
     SUPPORTED_METADATA_OPERATORS,
+    MetadataFilterClause,
 )
 
 
