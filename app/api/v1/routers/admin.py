@@ -61,12 +61,20 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
 
     # ltree 扩展（PostgreSQL）
     dialect = bind.dialect.name
-    ltree: dict[str, bool | None] = {"present": None}
+    extensions: list[dict[str, str]] = []
+    ltree: dict[str, bool | str | None] = {"present": None}
     if dialect == "postgresql":
-        present = db.execute(
-            text("SELECT 1 FROM pg_extension WHERE extname='ltree'")
-        ).scalar_one_or_none()
-        ltree = {"present": bool(present)}
+        rows = db.execute(
+            text(
+                "SELECT extname, extversion FROM pg_extension "
+                "WHERE extname IN ('ltree','btree_gist','btree_gin','pg_trgm')"
+            )
+        ).all()
+        extensions = [{"name": row[0], "version": row[1]} for row in rows]
+        ltree = {
+            "present": any(row[0] == "ltree" for row in rows),
+            "version": next((row[1] for row in rows if row[0] == "ltree"), None),
+        }
 
     # 关键索引存在性
     expected_indexes = {
@@ -92,9 +100,19 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
             idx = inspector.get_indexes(table)
             existing = {i.get("name") for i in idx}
             missing = sorted(list(names - existing))
+            details = [
+                {
+                    "name": i.get("name"),
+                    "columns": i.get("column_names") or [],
+                    "unique": bool(i.get("unique")),
+                    "dialect": i.get("dialect_options") or {},
+                }
+                for i in idx
+            ]
             index_report[table] = {
                 "present": sorted(list(existing & names)),
                 "missing": missing,
+                "details": details,
             }
         except Exception as exc:
             index_report[table] = {"error": str(exc)}
@@ -120,6 +138,7 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
         "database": {"ok": database_ok, "dialect": dialect},
         "alembic": alembic,
         "ltree": ltree,
+        "extensions": extensions,
         "indexes": index_report,
         "tables": table_counts,
         "timestamp": datetime.now(timezone.utc).isoformat(),

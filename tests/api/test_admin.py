@@ -25,6 +25,7 @@ def test_admin_self_check_endpoint():
     assert r.status_code == 200
     body = r.json()
     assert "database" in body and "alembic" in body and "indexes" in body
+    assert "extensions" in body and isinstance(body["extensions"], list)
 
 
 def test_admin_reindex_analyze_endpoint():
