@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import bindparam, cast
 from sqlalchemy.sql.elements import BindParameter
@@ -22,10 +22,10 @@ class _FallbackLtree(
     def get_col_spec(self, **kw: Any) -> str:
         return "LTREE"
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect: Any) -> Callable[[Any], Any] | None:
         return lambda value: value
 
-    def result_processor(self, dialect, coltype):
+    def result_processor(self, dialect: Any, coltype: Any) -> Callable[[Any], Any] | None:
         return lambda value: value
 
 
@@ -37,20 +37,20 @@ class _FallbackLquery(
     def get_col_spec(self, **kw: Any) -> str:
         return "LQUERY"
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect: Any) -> Callable[[Any], Any] | None:
         return lambda value: value
 
-    def result_processor(self, dialect, coltype):
+    def result_processor(self, dialect: Any, coltype: Any) -> Callable[[Any], Any] | None:
         return lambda value: value
 
 
-def _new_ltree_type():
+def _new_ltree_type() -> Any:
     if _pg_ltree is not None:
         return _pg_ltree.LTREE()
     return _FallbackLtree()
 
 
-def _new_lquery_type():
+def _new_lquery_type() -> Any:
     if _pg_ltree is not None:
         return _pg_ltree.LQUERY()
     return _FallbackLquery()
@@ -60,19 +60,19 @@ def _make_bind_param(value: str, prefix: str) -> BindParameter[str]:
     return bindparam(f"{prefix}_{uuid.uuid4().hex}", value)
 
 
-def make_lquery(pattern: str):
+def make_lquery(pattern: str) -> Any:
     """Return a SQL expression that casts the given pattern into a lquery literal."""
 
     return cast(_make_bind_param(pattern, "lquery"), _new_lquery_type())
 
 
-def make_ltree(value: str):
+def make_ltree(value: str) -> Any:
     """Return a SQL expression that casts the given value into a ltree literal."""
 
     return cast(_make_bind_param(value, "ltree"), _new_ltree_type())
 
 
-def as_ltree(expression):
+def as_ltree(expression: Any) -> Any:
     """Cast an arbitrary SQL expression to ltree, relying on the extended type."""
 
     return cast(expression, _new_ltree_type())
@@ -97,13 +97,13 @@ class LtreeType(TypeDecorator):
         super().__init__(length=length, **kwargs)
         self._length = length
 
-    def load_dialect_impl(self, dialect):
+    def load_dialect_impl(self, dialect: Any) -> Any:
         if dialect.name == "postgresql":
             return dialect.type_descriptor(_new_ltree_type())
         return dialect.type_descriptor(String(self._length))
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: Any, dialect: Any) -> Any:
         return value
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(self, value: Any, dialect: Any) -> Any:
         return value

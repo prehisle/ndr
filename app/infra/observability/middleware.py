@@ -2,7 +2,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from fastapi import Request
 from starlette.concurrency import iterate_in_threadpool
@@ -59,7 +59,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         except Exception:
             return text
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Any]]
+    ) -> Any:
         start = time.perf_counter()
         request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
         client = request.client or None
@@ -93,7 +95,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                             masked_text = masked_text[:2048] + "...<truncated>"
                         request_body = masked_text
 
-                    async def receive():
+                    async def receive() -> dict[str, Any]:
                         return {
                             "type": "http.request",
                             "body": raw_body,
