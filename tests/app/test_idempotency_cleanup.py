@@ -48,4 +48,3 @@ def test_cleanup_idempotency_deletes_only_expired():
     # 再次运行应为 0
     again = cleanup_idempotency(dry_run=True)
     assert again == 0
-

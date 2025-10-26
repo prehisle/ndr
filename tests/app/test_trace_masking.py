@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -19,7 +16,9 @@ def build_app() -> FastAPI:
     async def echo(request: Request):
         body = await request.json()
         # 回传一个包含敏感字段的响应
-        return JSONResponse({"ok": True, "token": body.get("token"), "password": body.get("password")})
+        return JSONResponse(
+            {"ok": True, "token": body.get("token"), "password": body.get("password")}
+        )
 
     return app
 
@@ -32,11 +31,17 @@ def test_trace_masking_masks_sensitive_fields(caplog, monkeypatch):
     client = TestClient(app)
 
     with caplog.at_level("INFO"):
-        r = client.post("/echo", json={"user": "u", "password": "p@ss", "token": "abc123"})
+        r = client.post(
+            "/echo", json={"user": "u", "password": "p@ss", "token": "abc123"}
+        )
         assert r.status_code == 200
 
     # 找到 http 结构化日志，直接读取 LogRecord.extra（由中间件注入）
-    records = [rec for rec in caplog.records if rec.name == "http" and "request" in rec.getMessage()]
+    records = [
+        rec
+        for rec in caplog.records
+        if rec.name == "http" and "request" in rec.getMessage()
+    ]
     assert records, "should capture http logs"
     rec = records[-1]
     # 结构化字段挂载在 record.extra 上

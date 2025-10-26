@@ -22,4 +22,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_node_documents_document_id", table_name="node_documents")
-

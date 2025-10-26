@@ -13,14 +13,16 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.infra.db.session import get_engine
 from app.infra.db.models import IdempotencyRecord
+from app.infra.db.session import get_engine
 
 
-def cleanup_idempotency(*, older_than: timedelta | None = None, dry_run: bool = False) -> int:
+def cleanup_idempotency(
+    *, older_than: timedelta | None = None, dry_run: bool = False
+) -> int:
     engine = get_engine()
     now = datetime.now(timezone.utc)
     threshold = now - older_than if older_than else now
@@ -59,4 +61,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

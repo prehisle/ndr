@@ -37,4 +37,3 @@ def test_update_node_invalid_slug_returns_422():
     )
     assert resp.status_code == 422
     assert resp.headers.get("content-type", "").startswith("application/problem+json")
-
