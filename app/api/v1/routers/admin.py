@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Iterable
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import delete, inspect, text
@@ -124,3 +124,60 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
         "tables": table_counts,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _normalize_tables(inspector, candidates: Iterable[str] | None) -> list[str]:
+    existing = set(inspector.get_table_names())
+    if not candidates:
+        return sorted(existing)
+    chosen = [t for t in candidates if t in existing]
+    return sorted(chosen)
+
+
+@router.post("/admin/reindex")
+def reindex_or_analyze(
+    db: Session = Depends(get_db),
+    tables: list[str] | None = Query(default=None),
+    method: str = Query(default="analyze", pattern="^(analyze|reindex)$"),
+    confirm: bool = Query(default=False),
+) -> dict[str, Any]:
+    """对指定表执行 ANALYZE 或 REINDEX（PostgreSQL）。
+
+    - method=analyze（默认）：对目标表执行 ANALYZE，快速、低风险。
+    - method=reindex：仅在 PostgreSQL 下可用，需 confirm=true 以避免误触。
+    - tables 未指定时对全部现有表执行。
+    """
+    bind = db.get_bind()
+    inspector = inspect(bind)
+    target_tables = _normalize_tables(inspector, tables)
+    if not target_tables:
+        return {"executed": [], "method": method, "dialect": bind.dialect.name}
+
+    executed: list[str] = []
+    if method == "analyze":
+        for t in target_tables:
+            db.execute(text(f"ANALYZE {t}"))
+            executed.append(t)
+        db.commit()
+        return {"executed": executed, "method": method, "dialect": bind.dialect.name}
+
+    # reindex 分支
+    if bind.dialect.name != "postgresql":
+        return {
+            "executed": [],
+            "method": method,
+            "dialect": bind.dialect.name,
+            "error": "reindex is supported only on PostgreSQL",
+        }
+    if not confirm:
+        return {
+            "executed": [],
+            "method": method,
+            "dialect": bind.dialect.name,
+            "error": "set confirm=true to proceed with REINDEX",
+        }
+    for t in target_tables:
+        db.execute(text(f"REINDEX TABLE {t}"))
+        executed.append(t)
+    db.commit()
+    return {"executed": executed, "method": method, "dialect": bind.dialect.name}

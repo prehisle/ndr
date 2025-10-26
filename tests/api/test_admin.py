@@ -25,3 +25,18 @@ def test_admin_self_check_endpoint():
     assert r.status_code == 200
     body = r.json()
     assert "database" in body and "alembic" in body and "indexes" in body
+
+
+def test_admin_reindex_analyze_endpoint():
+    app = create_app()
+    client = TestClient(app)
+
+    r = client.post(
+        "/api/v1/admin/reindex",
+        headers=_admin_headers(),
+        params={"method": "analyze", "tables": ["nodes"]},
+    )
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload.get("method") == "analyze"
+    assert "nodes" in payload.get("executed", [])
