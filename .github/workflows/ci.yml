@@ -62,15 +62,15 @@ jobs:
       - name: Run pre-commit (all files)
         run: pre-commit run --all-files
 
-      - name: Run mypy (baseline)
-        run: mypy app || true
+      - name: Run mypy (strict modules blocking)
+        run: mypy app
 
       - name: Run tests with coverage (enforce >=85%)
-        run: pytest --cov=app --cov-report=term --cov-report=xml --cov-fail-under=85
+        run: pytest --cov=app --cov-report=term --cov-report=xml --cov-fail-under=85 --junitxml=pytest-junit.xml
 
       - name: Dependency audit (pip-audit)
         run: |
-          pip-audit -r requirements.txt -f markdown > pip-audit.md || true
+          pip-audit -r requirements.txt -f sarif -o pip-audit.sarif || true
         continue-on-error: true
 
       - name: Dependency audit (safety)
@@ -85,5 +85,6 @@ jobs:
           name: ci-reports
           path: |
             coverage.xml
-            pip-audit.md
+            pip-audit.sarif
             safety.txt
+            pytest-junit.xml
