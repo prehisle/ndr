@@ -13,6 +13,7 @@ from app.api.v1.deps import get_db, require_api_key
 from app.api.v1.routers.documents import router as documents_router
 from app.api.v1.routers.nodes import router as nodes_router
 from app.api.v1.routers.relationships import router as relationships_router
+from app.api.v1.routers.admin import router as admin_router
 from app.common.config import get_settings
 from app.common.logging import setup_logging
 from app.infra.db.alembic_support import get_head_revision, upgrade_to_head
@@ -94,6 +95,11 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         tags=["relationships"],
         dependencies=[Depends(require_api_key)],
+    )
+    app.include_router(
+        admin_router,
+        prefix="/api/v1",
+        tags=["admin"],
     )
 
     # Metrics
