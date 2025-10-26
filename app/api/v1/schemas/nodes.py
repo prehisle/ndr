@@ -1,6 +1,7 @@
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
 
 
@@ -10,12 +11,33 @@ class NodeCreate(BaseModel):
     parent_path: str | None = None
     type: str | None = None
 
+    # 仅允许符合 ltree label 的安全字符，避免出现 '.' 等分隔符导致解析错误
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v: str) -> str:
+        if not (1 <= len(v) <= 255):
+            raise ValueError("slug 长度必须在 1..255 之间")
+        if not re.fullmatch(r"[a-z0-9_-]+", v):
+            raise ValueError("slug 仅允许小写字母、数字、下划线与短横线 [a-z0-9_-]")
+        return v
+
 
 class NodeUpdate(BaseModel):
     name: str | None = None
     slug: str | None = None
     parent_path: str | None = None
     type: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug_opt(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not (1 <= len(v) <= 255):
+            raise ValueError("slug 长度必须在 1..255 之间")
+        if not re.fullmatch(r"[a-z0-9_-]+", v):
+            raise ValueError("slug 仅允许小写字母、数字、下划线与短横线 [a-z0-9_-]")
+        return v
 
 
 class NodeOut(BaseModel):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Sequence
@@ -78,6 +79,11 @@ class NodeService(BaseService):
 
     def create_node(self, data: NodeCreateData, *, user_id: str) -> Node:
         user = self._ensure_user(user_id)
+        # 兜底校验，防止绕过 API 层的非法 slug 写入
+        if not re.fullmatch(r"[a-z0-9_-]{1,255}", data.slug):
+            raise InvalidNodeOperationError(
+                "slug 仅允许小写字母、数字、下划线与短横线，长度 1..255"
+            )
         parent_node = None
         parent_path = data.parent_path or None
         if parent_path:
@@ -124,6 +130,12 @@ class NodeService(BaseService):
             self._repo.require_ltree()
         except LtreeNotAvailableError as exc:  # pragma: no cover - defensive guard
             raise exc
+
+        # 可选的 slug 变更同样进行兜底校验
+        if data.slug is not None and not re.fullmatch(r"[a-z0-9_-]{1,255}", data.slug):
+            raise InvalidNodeOperationError(
+                "slug 仅允许小写字母、数字、下划线与短横线，长度 1..255"
+            )
 
         parent_node = None
         target_parent_path = node.parent_path

@@ -59,6 +59,8 @@ def create_node(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ParentNodeNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidNodeOperationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except MissingUserError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

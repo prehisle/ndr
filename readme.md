@@ -5,6 +5,7 @@
 > 设计约束：NDR 不内置任何缓存组件，所有缓存与失效策略由调用方负责管理；服务本身仅聚焦节点、文档、节点-文档关系与文档版本的生命周期管理。
 
 - 节点模型提供 `parent_id` 与 `position` 字段：新增节点默认追加到父节点末尾，可通过 `POST /api/v1/nodes/reorder` 批量调整同级排序，响应会返回重排后的节点列表，便于实现目录拖拽。
+- 节点 slug 约束：仅允许小写字母、数字与下划线（`[a-z0-9_]`），长度 1..255，且禁止包含 `.`，以确保与 PostgreSQL ltree 类型兼容。
 - 高危操作独立密钥：设置 `DESTRUCTIVE_API_KEY` 后，调用方需携带 `X-Admin-Key` 才能访问 `/api/v1/documents/{id}/purge` 与 `/api/v1/nodes/{id}/purge`，用于在软删后彻底清除数据及关联。
 - 调试场景可设置 `TRACE_HTTP=true` 输出请求/响应体（默认截断 2048 字符），部署环境请保持关闭以避免泄露。
 
@@ -86,3 +87,9 @@ pre-commit run --all-files
 - 按照《[当前进度与待办](docs/%E5%BD%93%E5%89%8D%E8%BF%9B%E5%BA%A6%E4%B8%8E%E5%BE%85%E5%8A%9E.md)》中列出的事项，补齐节点移动的并发处理及基于 ltree 的子树查询与索引验证。
 - 引入 CI 流水线与自动化脚本，巩固质量门槛。
 - 拆分 `api → app → domain` 分层，逐步丰富领域/仓储层的单元与集成测试。
+### CI 与质量门禁
+
+- 预提交（ruff/black/isort/mypy）在 CI 中全量执行；
+- 单元与集成测试覆盖率阈值：85%（`pytest --cov`）；
+- 依赖安全扫描：`pip-audit` 与 `safety`，报告作为构件上传；
+- mypy 使用 `mypy.ini` 基础配置，后续将逐步提升严格度（分模块推进）。
