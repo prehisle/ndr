@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.engine import Dialect
@@ -51,7 +51,7 @@ class NodeRepository:
             stmt = stmt.where(Node.id != exclude_id)
         return self._session.execute(stmt).scalar_one_or_none() is not None
 
-    def _with_parent_filter(self, stmt, parent_id: int | None):
+    def _with_parent_filter(self, stmt: Any, parent_id: int | None) -> Any:
         if parent_id is None:
             return stmt.where(Node.parent_id.is_(None))
         return stmt.where(Node.parent_id == parent_id)

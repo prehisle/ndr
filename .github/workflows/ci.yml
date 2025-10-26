@@ -56,9 +56,34 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pre-commit
+          # tools used only in CI
+          pip install pip-audit safety
 
       - name: Run pre-commit (all files)
         run: pre-commit run --all-files
 
-      - name: Run tests
-        run: pytest
+      - name: Run mypy (baseline)
+        run: mypy app || true
+
+      - name: Run tests with coverage (enforce >=85%)
+        run: pytest --cov=app --cov-report=term --cov-report=xml --cov-fail-under=85
+
+      - name: Dependency audit (pip-audit)
+        run: |
+          pip-audit -r requirements.txt -f markdown > pip-audit.md || true
+        continue-on-error: true
+
+      - name: Dependency audit (safety)
+        run: |
+          safety check -r requirements.txt --full-report > safety.txt || true
+        continue-on-error: true
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-reports
+          path: |
+            coverage.xml
+            pip-audit.md
+            safety.txt

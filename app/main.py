@@ -2,6 +2,7 @@ import logging
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -154,7 +155,8 @@ def create_app() -> FastAPI:
                 "type": "about:blank",
                 "title": "Validation Error",
                 "status": 422,
-                "detail": exc.errors(),
+                # 确保可序列化
+                "detail": jsonable_encoder(exc.errors()),
                 "error_code": _resolve_error_code(422),
                 "instance": str(request.url),
                 "request_id": request.headers.get("X-Request-Id"),
