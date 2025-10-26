@@ -4,12 +4,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete, text, inspect
+from sqlalchemy import delete, inspect, text
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, require_admin_key
-from app.infra.db.models import IdempotencyRecord
 from app.infra.db.alembic_support import get_head_revision
+from app.infra.db.models import IdempotencyRecord
 
 router = APIRouter(dependencies=[Depends(require_admin_key)])
 
@@ -48,7 +48,9 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
     # 迁移版本
     head = get_head_revision()
     try:
-        current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+        current = db.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one_or_none()
     except Exception:
         current = None
     alembic = {
@@ -59,10 +61,11 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
 
     # ltree 扩展（PostgreSQL）
     dialect = bind.dialect.name
-    ltree = {"present": None}
+    ltree: dict[str, bool | None] = {"present": None}
     if dialect == "postgresql":
-        present = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='ltree'"))\
-            .scalar_one_or_none()
+        present = db.execute(
+            text("SELECT 1 FROM pg_extension WHERE extname='ltree'")
+        ).scalar_one_or_none()
         ltree = {"present": bool(present)}
 
     # 关键索引存在性
@@ -100,7 +103,13 @@ def self_check(db: Session = Depends(get_db)) -> dict[str, Any]:
     table_counts: dict[str, int] = {}
     try:
         tables = set(inspector.get_table_names())
-        for t in ("nodes", "documents", "node_documents", "document_versions", "idempotency_records"):
+        for t in (
+            "nodes",
+            "documents",
+            "node_documents",
+            "document_versions",
+            "idempotency_records",
+        ):
             if t in tables:
                 cnt = db.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar_one()
                 table_counts[t] = int(cnt)
