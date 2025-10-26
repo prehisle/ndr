@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import importlib
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from app.common.config import get_settings
@@ -27,4 +28,7 @@ def get_head_revision() -> str | None:
 
 def upgrade_to_head() -> None:
     config = get_alembic_config()
-    command.upgrade(config, "head")
+    alembic_command.upgrade(config, "head")
+
+
+alembic_command: Any = importlib.import_module("alembic.command")
