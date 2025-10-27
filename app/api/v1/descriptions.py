@@ -7,7 +7,7 @@ METADATA_FILTERS_DESCRIPTION = """
 - 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；
 - 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。
 
-更多示例见 `docs/当前进度与待办.md` 的 “Metadata 过滤语法速查”。
+更多示例见 `docs/状态看板.md` 的 “Metadata 过滤语法速查”。
 """.strip()
 
 
