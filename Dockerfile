@@ -28,9 +28,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
-COPY . .
-
-RUN chown -R appuser:appuser /app
+COPY --chown=appuser:appuser . .
 
 USER appuser
 
