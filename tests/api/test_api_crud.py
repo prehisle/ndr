@@ -73,6 +73,83 @@ def test_document_crud_and_soft_delete():
     assert all(item["id"] != doc_id for item in trash_after_restore["items"])
 
 
+def test_document_binding_endpoints():
+    app = create_app()
+    client = TestClient(app)
+
+    # 准备节点与文档
+    root_resp = client.post(
+        "/api/v1/nodes",
+        json={"name": "Root", "slug": "root"},
+        headers={"X-User-Id": "owner"},
+    )
+    assert root_resp.status_code == 201
+    root = root_resp.json()
+    child_resp = client.post(
+        "/api/v1/nodes",
+        json={"name": "Child", "slug": "child", "parent_path": "root"},
+        headers={"X-User-Id": "owner"},
+    )
+    assert child_resp.status_code == 201
+    child = child_resp.json()
+    document_resp = client.post(
+        "/api/v1/documents",
+        json={"title": "Doc", "metadata": {}, "content": {}},
+        headers={"X-User-Id": "owner"},
+    )
+    assert document_resp.status_code == 201
+    document = document_resp.json()
+
+    bindings_empty = client.get(f"/api/v1/documents/{document['id']}/bindings")
+    assert bindings_empty.status_code == 200
+    assert bindings_empty.json() == []
+
+    batch_resp = client.post(
+        f"/api/v1/documents/{document['id']}/batch-bind",
+        json={"node_ids": [root["id"], child["id"], root["id"]]},
+        headers={"X-User-Id": "owner"},
+    )
+    assert batch_resp.status_code == 200
+    batch = batch_resp.json()
+    assert [item["node_id"] for item in batch] == [root["id"], child["id"]]
+    assert batch[0]["node_path"] == "/root"
+    assert batch[1]["node_path"] == "/root/child"
+    assert all("created_at" in item for item in batch)
+
+    status_resp = client.get(f"/api/v1/documents/{document['id']}/binding-status")
+    assert status_resp.status_code == 200
+    assert status_resp.json() == {
+        "total_bindings": 2,
+        "node_ids": [root["id"], child["id"]],
+    }
+
+    # 解绑后状态更新
+    unbind_resp = client.delete(
+        f"/api/v1/nodes/{child['id']}/unbind/{document['id']}",
+        headers={"X-User-Id": "owner"},
+    )
+    assert unbind_resp.status_code == 200
+    status_after_unbind = client.get(
+        f"/api/v1/documents/{document['id']}/binding-status"
+    ).json()
+    assert status_after_unbind == {
+        "total_bindings": 1,
+        "node_ids": [root["id"]],
+    }
+
+    # 再次批量绑定可恢复关系
+    rebind = client.post(
+        f"/api/v1/documents/{document['id']}/batch-bind",
+        json={"node_ids": [child["id"]]},
+        headers={"X-User-Id": "owner"},
+    )
+    assert rebind.status_code == 200
+    assert {item["node_id"] for item in rebind.json()} == {
+        root["id"],
+        child["id"],
+    }
+
+
 def test_node_crud_and_children_and_relationships():
     app = create_app()
     client = TestClient(app)

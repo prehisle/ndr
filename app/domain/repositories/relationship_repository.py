@@ -5,7 +5,7 @@ from typing import Optional, Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.infra.db.models import Document, NodeDocument
+from app.infra.db.models import Document, Node, NodeDocument
 
 from .document_filters import MetadataFilters, apply_document_filters
 
@@ -32,6 +32,45 @@ class RelationshipRepository:
             stmt = stmt.where(NodeDocument.node_id == node_id)
         if document_id is not None:
             stmt = stmt.where(NodeDocument.document_id == document_id)
+        return list(self._session.execute(stmt).scalars())
+
+    def list_nodes_for_document(
+        self,
+        document_id: int,
+        *,
+        include_deleted_relations: bool = False,
+        include_deleted_nodes: bool = False,
+    ) -> list[tuple[NodeDocument, Node]]:
+        stmt = (
+            select(NodeDocument, Node)
+            .join(Node, Node.id == NodeDocument.node_id)
+            .where(NodeDocument.document_id == document_id)
+            .order_by(Node.path.asc(), Node.id.asc())
+        )
+        if not include_deleted_relations:
+            stmt = stmt.where(NodeDocument.deleted_at.is_(None))
+        if not include_deleted_nodes:
+            stmt = stmt.where(Node.deleted_at.is_(None))
+        rows = self._session.execute(stmt).all()
+        return [(row[0], row[1]) for row in rows]
+
+    def list_active_node_ids_for_document(
+        self,
+        document_id: int,
+        *,
+        include_deleted_relations: bool = False,
+        include_deleted_nodes: bool = False,
+    ) -> list[int]:
+        stmt = (
+            select(NodeDocument.node_id)
+            .join(Node, Node.id == NodeDocument.node_id)
+            .where(NodeDocument.document_id == document_id)
+        )
+        if not include_deleted_relations:
+            stmt = stmt.where(NodeDocument.deleted_at.is_(None))
+        if not include_deleted_nodes:
+            stmt = stmt.where(Node.deleted_at.is_(None))
+        stmt = stmt.order_by(NodeDocument.node_id.asc())
         return list(self._session.execute(stmt).scalars())
 
     def list_documents_for_nodes(

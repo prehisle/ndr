@@ -48,3 +48,19 @@ class DocumentsPage(BaseModel):
     size: int
     total: int
     items: list[DocumentOut]
+
+
+class DocumentBindingOut(BaseModel):
+    node_id: int
+    node_name: str
+    node_path: str
+    created_at: datetime
+
+
+class DocumentBindingStatus(BaseModel):
+    total_bindings: int
+    node_ids: list[int]
+
+
+class DocumentBatchBind(BaseModel):
+    node_ids: list[int] = Field(default_factory=list)

@@ -6,6 +6,7 @@ from app.app.services import (
     DocumentNotFoundError,
     MissingUserError,
     NodeCreateData,
+    NodeNotFoundError,
     NodeService,
     RelationshipNotFoundError,
     RelationshipService,
@@ -91,3 +92,94 @@ def test_relationship_service_requires_user(session):
 
     with pytest.raises(MissingUserError):
         relationship_service.unbind(node.id, document.id, user_id="")
+
+
+def test_list_bindings_and_status(session):
+    node_service = NodeService(session)
+    relationship_service = RelationshipService(session)
+
+    root = node_service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None), user_id="owner"
+    )
+    child = node_service.create_node(
+        NodeCreateData(name="Child", slug="child", parent_path=root.path),
+        user_id="owner",
+    )
+    document = _document(session, "Doc A", user_id="owner")
+
+    relationship_service.bind(root.id, document.id, user_id="owner")
+    relationship_service.bind(child.id, document.id, user_id="owner")
+
+    bindings = relationship_service.list_bindings_for_document(document.id)
+    assert [b.node_id for b in bindings] == [root.id, child.id]
+    assert bindings[0].node_name == "Root"
+    assert bindings[1].node_path == "root.child"
+
+    status = relationship_service.binding_status(document.id)
+    assert status.total_bindings == 2
+    assert status.node_ids == [root.id, child.id]
+
+    node_service.soft_delete_node(child.id, user_id="owner")
+    bindings_after = relationship_service.list_bindings_for_document(document.id)
+    assert [b.node_id for b in bindings_after] == [root.id]
+    status_after = relationship_service.binding_status(document.id)
+    assert status_after.total_bindings == 1
+    assert status_after.node_ids == [root.id]
+
+
+def test_batch_bind_behaviour(session):
+    node_service = NodeService(session)
+    relationship_service = RelationshipService(session)
+
+    root = node_service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None), user_id="owner"
+    )
+    child = node_service.create_node(
+        NodeCreateData(name="Child", slug="child", parent_path=root.path),
+        user_id="owner",
+    )
+    document = _document(session, "Doc A", user_id="owner")
+
+    bindings = relationship_service.batch_bind(
+        document.id, [root.id, child.id, root.id], user_id="owner"
+    )
+    assert {b.node_id for b in bindings} == {root.id, child.id}
+
+    # 再次绑定保持结果不变
+    bindings_repeat = relationship_service.batch_bind(
+        document.id, [child.id], user_id="owner"
+    )
+    assert {b.node_id for b in bindings_repeat} == {root.id, child.id}
+
+    # 解绑后批量绑定可恢复
+    relationship_service.unbind(child.id, document.id, user_id="owner")
+    bindings_reopen = relationship_service.batch_bind(
+        document.id, [child.id], user_id="owner"
+    )
+    assert {b.node_id for b in bindings_reopen} == {root.id, child.id}
+
+
+def test_batch_bind_validates_inputs(session):
+    node_service = NodeService(session)
+    relationship_service = RelationshipService(session)
+
+    root = node_service.create_node(
+        NodeCreateData(name="Root", slug="root", parent_path=None), user_id="owner"
+    )
+    document = _document(session, "Doc A", user_id="owner")
+
+    with pytest.raises(DocumentNotFoundError):
+        relationship_service.batch_bind(9999, [root.id], user_id="owner")
+
+    with pytest.raises(MissingUserError):
+        relationship_service.batch_bind(document.id, [root.id], user_id="")
+
+    with pytest.raises(DocumentNotFoundError):
+        relationship_service.list_bindings_for_document(9999)
+
+    with pytest.raises(DocumentNotFoundError):
+        relationship_service.binding_status(9999)
+
+    node_service.soft_delete_node(root.id, user_id="owner")
+    with pytest.raises(NodeNotFoundError):
+        relationship_service.batch_bind(document.id, [root.id], user_id="owner")

@@ -77,6 +77,15 @@ class NodeRepository:
             stmt = stmt.order_by(Node.position, Node.id)
         return tuple(self._session.execute(stmt).scalars())
 
+    def get_many(self, node_ids: Sequence[int]) -> list[Node]:
+        """批量获取指定节点，保持调用方去重后的顺序。"""
+        ids = list(dict.fromkeys(node_ids))
+        if not ids:
+            return []
+        stmt = select(Node).where(Node.id.in_(ids))
+        nodes = {node.id: node for node in self._session.execute(stmt).scalars()}
+        return [nodes[node_id] for node_id in ids if node_id in nodes]
+
     def normalize_positions(
         self, parent_id: int | None, *, include_deleted: bool = False
     ) -> None:

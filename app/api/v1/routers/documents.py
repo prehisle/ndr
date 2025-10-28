@@ -9,6 +9,9 @@ from app.api.v1.schemas.document_versions import (
     DocumentVersionsPage,
 )
 from app.api.v1.schemas.documents import (
+    DocumentBatchBind,
+    DocumentBindingOut,
+    DocumentBindingStatus,
     DocumentCreate,
     DocumentOut,
     DocumentsPage,
@@ -21,6 +24,7 @@ from app.app.services import (
     DocumentUpdateData,
     DocumentVersionNotFoundError,
     MissingUserError,
+    NodeNotFoundError,
     get_service_bundle,
 )
 from app.common.idempotency import IdempotencyService
@@ -29,6 +33,13 @@ router = APIRouter()
 
 
 # Using DocumentCreate/DocumentUpdate from app.api.v1.schemas.documents
+
+
+def _format_node_path(raw_path: str) -> str:
+    if not raw_path:
+        return "/"
+    normalized = raw_path.replace(".", "/")
+    return normalized if normalized.startswith("/") else f"/{normalized}"
 
 
 @router.post(
@@ -335,3 +346,64 @@ def restore_document_version(
         # Includes the case where the specific version was not found
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return restored
+
+
+@router.get("/documents/{id}/bindings", response_model=list[DocumentBindingOut])
+def list_document_bindings(id: int, db: Session = Depends(get_db)):
+    services = get_service_bundle(db)
+    rel_service = services.relationship()
+    try:
+        bindings = rel_service.list_bindings_for_document(id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [
+        DocumentBindingOut(
+            node_id=binding.node_id,
+            node_name=binding.node_name,
+            node_path=_format_node_path(binding.node_path),
+            created_at=binding.created_at,
+        )
+        for binding in bindings
+    ]
+
+
+@router.post("/documents/{id}/batch-bind", response_model=list[DocumentBindingOut])
+def batch_bind_document(
+    id: int,
+    payload: DocumentBatchBind,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    user_id = ctx["user_id"]
+    services = get_service_bundle(db)
+    rel_service = services.relationship()
+    try:
+        bindings = rel_service.batch_bind(id, payload.node_ids, user_id=user_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [
+        DocumentBindingOut(
+            node_id=binding.node_id,
+            node_name=binding.node_name,
+            node_path=_format_node_path(binding.node_path),
+            created_at=binding.created_at,
+        )
+        for binding in bindings
+    ]
+
+
+@router.get("/documents/{id}/binding-status", response_model=DocumentBindingStatus)
+def document_binding_status(id: int, db: Session = Depends(get_db)):
+    services = get_service_bundle(db)
+    rel_service = services.relationship()
+    try:
+        summary = rel_service.binding_status(id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DocumentBindingStatus(
+        total_bindings=summary.total_bindings, node_ids=summary.node_ids
+    )
