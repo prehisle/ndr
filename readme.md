@@ -46,6 +46,20 @@ pytest
 
 测试夹具会在会话开始时自动执行 `alembic upgrade head` 并在每个用例后清理表数据。
 
+## 发布镜像到 GHCR
+
+仓库提供 `.github/workflows/publish.yml`，当向 `main` 分支推送或创建 `v*` 标签时，会自动构建容器镜像并推送至 `ghcr.io/<owner>/ndr-service`。流程默认使用 `GITHUB_TOKEN` 写入 GHCR，无需额外手动触发，只需确保仓库与组织允许 Packages 写权限。
+
+如需手动发布，可在 GitHub 生成具备 `write:packages` 权限的 Personal Access Token，并执行：
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <GitHub 用户名> --password-stdin
+docker build -t ghcr.io/<owner>/ndr-service:latest .
+docker push ghcr.io/<owner>/ndr-service:latest
+```
+
+若需要保留多个版本，可额外推送 `:vX.Y.Z` 等标签。
+
 ## 目录速览
 
 - `app/`：应用主代码（API、配置、基础设施）
