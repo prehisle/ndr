@@ -114,6 +114,39 @@ def test_document_service_restore(session):
     assert restored_again.deleted_at is None
 
 
+def test_document_service_metadata_allows_field_removal(session):
+    service = DocumentService(session)
+    created = service.create_document(
+        DocumentCreateData(
+            title="Doc",
+            metadata={
+                "references": [{"document_id": 1, "title": "Ref"}],
+                "stage": "draft",
+                "owner": "ops",
+            },
+            content={},
+        ),
+        user_id="author",
+    )
+
+    updated = service.update_document(
+        created.id,
+        DocumentUpdateData(
+            metadata={
+                "references": None,
+                "stage": "published",
+                "new_field": {"flag": True},
+            }
+        ),
+        user_id="editor",
+    )
+
+    assert "references" not in updated.metadata_
+    assert updated.metadata_["stage"] == "published"
+    assert updated.metadata_["owner"] == "ops"
+    assert updated.metadata_["new_field"] == {"flag": True}
+
+
 def test_document_version_history_and_restore(session):
     service = DocumentService(session)
     version_service = DocumentVersionService(session)

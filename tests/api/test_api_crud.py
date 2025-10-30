@@ -73,6 +73,54 @@ def test_document_crud_and_soft_delete():
     assert all(item["id"] != doc_id for item in trash_after_restore["items"])
 
 
+def test_document_update_metadata_supports_null_removal():
+    app = create_app()
+    client = TestClient(app)
+
+    create_headers = {"X-User-Id": "author"}
+    create_resp = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Doc",
+            "metadata": {
+                "references": [{"document_id": 1}],
+                "category": "guide",
+                "owner": "ops",
+            },
+            "content": {},
+        },
+        headers=create_headers,
+    )
+    assert create_resp.status_code == 201
+    doc_id = create_resp.json()["id"]
+
+    update_headers = {"X-User-Id": "editor"}
+    update_resp = client.put(
+        f"/api/v1/documents/{doc_id}",
+        json={
+            "metadata": {
+                "references": None,
+                "category": "reference",
+            }
+        },
+        headers=update_headers,
+    )
+    assert update_resp.status_code == 200
+    updated_payload = update_resp.json()
+    assert updated_payload["metadata"]["category"] == "reference"
+    assert "references" not in updated_payload["metadata"]
+    assert updated_payload["metadata"]["owner"] == "ops"
+
+    get_resp = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"X-User-Id": "viewer"}
+    )
+    assert get_resp.status_code == 200
+    get_payload = get_resp.json()
+    assert get_payload["metadata"]["category"] == "reference"
+    assert "references" not in get_payload["metadata"]
+    assert get_payload["metadata"]["owner"] == "ops"
+
+
 def test_document_binding_endpoints():
     app = create_app()
     client = TestClient(app)

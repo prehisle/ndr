@@ -106,7 +106,14 @@ class DocumentService(BaseService):
         if data.title is not None:
             document.title = data.title
         if data.metadata is not None:
-            document.metadata_ = dict(data.metadata)
+            current_metadata = dict(document.metadata_ or {})
+            incoming_metadata = dict(data.metadata)
+            for key, value in incoming_metadata.items():
+                if value is None:
+                    current_metadata.pop(key, None)
+                else:
+                    current_metadata[key] = value
+            document.metadata_ = current_metadata
         if data.content is not None:
             document.content = dict(data.content)
         if data.type is not None:
