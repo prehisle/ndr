@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.engine.url import make_url
 
 from app.api.v1.deps import get_db, require_api_key
 from app.api.v1.routers.admin import router as admin_router
@@ -16,6 +17,7 @@ from app.api.v1.routers.nodes import router as nodes_router
 from app.api.v1.routers.relationships import router as relationships_router
 from app.common.config import get_settings
 from app.common.logging import setup_logging
+from app.infra.db.session import get_engine
 from app.infra.db.alembic_support import get_head_revision, upgrade_to_head
 from app.infra.observability.metrics import metrics_app
 from app.infra.observability.middleware import MetricsMiddleware
@@ -56,6 +58,50 @@ def _resolve_error_code(status_code: int, override: str | None = None) -> str:
     if status_code == 422:
         return "validation_error"
     return ERROR_CODE_BY_STATUS.get(status_code, "unknown_error")
+
+
+def _collect_db_metadata(db_url: str) -> dict[str, object]:
+    try:
+        url = make_url(db_url)
+    except Exception:
+        return {"db_target": "<invalid>", "db_driver": "<unknown>"}
+
+    payload: dict[str, object] = {"db_driver": url.drivername}
+    if url.username:
+        payload["db_username"] = url.username
+    if url.host:
+        payload["db_host"] = url.host
+    if url.port:
+        payload["db_port"] = url.port
+    if url.database:
+        payload["db_name"] = url.database
+    return payload
+
+
+def _describe_db_target(db_url: str) -> str:
+    try:
+        url = make_url(db_url)
+    except Exception:
+        return "<invalid DB_URL>"
+
+    user = url.username or "?"
+    host = url.host or "?"
+    port = f":{url.port}" if url.port else ""
+    database = f"/{url.database}" if url.database else ""
+    return f"{url.drivername}://{user}@{host}{port}{database}"
+
+
+def _format_db_context(db_url: str) -> str:
+    meta = _collect_db_metadata(db_url)
+    parts: list[str] = []
+    for key in ("db_driver", "db_username", "db_host", "db_port", "db_name"):
+        value = meta.get(key)
+        if value is not None:
+            parts.append(f"{key}={value}")
+    target = _describe_db_target(db_url)
+    if target:
+        parts.append(f"db_target={target}")
+    return ", ".join(parts)
 
 
 def create_app() -> FastAPI:
@@ -109,8 +155,45 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def on_startup() -> None:
+        startup_logger = logging.getLogger("app.startup")
         if settings.AUTO_APPLY_MIGRATIONS:
-            upgrade_to_head()
+            db_context_text = _format_db_context(settings.DB_URL)
+            startup_logger.info(
+                "正在执行数据库迁移前的连接检查。[event=auto_migration_precheck] (%s)",
+                db_context_text,
+            )
+            try:
+                engine = get_engine()
+                with engine.connect() as connection:
+                    connection.execute(text("SELECT 1"))
+            except OperationalError as exc:
+                startup_logger.error(
+                    "无法连接数据库，应用启动中断，请检查 DB_URL、账号密码或网络配置。"
+                    " [event=auto_migration_connection_failed] (%s，error=%s)",
+                    db_context_text,
+                    exc,
+                )
+                raise
+            startup_logger.info(
+                "数据库连接检查通过，开始执行自动迁移。"
+                " [event=auto_migration_begin] (%s)",
+                db_context_text,
+            )
+            try:
+                upgrade_to_head()
+            except Exception as exc:
+                startup_logger.exception(
+                    "自动执行数据库迁移失败，请检查数据库权限与迁移脚本。"
+                    " [event=auto_migration_failed] (%s，error=%s)",
+                    db_context_text,
+                    exc,
+                )
+                raise
+            startup_logger.info(
+                "数据库迁移完成，应用继续启动。"
+                " [event=auto_migration_succeeded] (%s)",
+                db_context_text,
+            )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):

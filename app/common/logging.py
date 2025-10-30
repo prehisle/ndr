@@ -11,17 +11,31 @@ def setup_logging() -> None:
             "formatters": {
                 "json": {
                     "()": JsonFormatter,
-                }
+                },
+                "plain": {
+                    "format": "%(levelname)s %(name)s: %(message)s",
+                },
             },
             "handlers": {
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": "json",
-                }
+                },
+                "startup_console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "plain",
+                },
             },
             "root": {
                 "level": "INFO",
                 "handlers": ["console"],
+            },
+            "loggers": {
+                "app.startup": {
+                    "handlers": ["startup_console"],
+                    "level": "INFO",
+                    "propagate": False,
+                }
             },
         }
     )
