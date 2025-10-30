@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Iterable, Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.infra.db.models import Document
@@ -79,3 +79,27 @@ class DocumentRepository:
             stmt = stmt.where(Document.deleted_at.is_(None))
         stmt = stmt.order_by(Document.position.asc(), Document.id.asc())
         return list(self._session.execute(stmt).scalars())
+
+    def fetch_active_for_reorder(
+        self,
+        *,
+        filter_type: bool,
+        doc_type: str | None = None,
+    ) -> Sequence[Document]:
+        stmt = select(Document).where(Document.deleted_at.is_(None))
+        if filter_type:
+            if doc_type is None:
+                stmt = stmt.where(Document.type.is_(None))
+            else:
+                stmt = stmt.where(Document.type == doc_type)
+        stmt = stmt.order_by(Document.position.asc(), Document.id.asc())
+        return tuple(self._session.execute(stmt).scalars())
+
+    def lock_documents(self, document_ids: Iterable[int]) -> None:
+        ids = sorted(set(document_ids))
+        if not ids:
+            return
+        for doc_id in ids:
+            self._session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"), {"key": doc_id}
+            )

@@ -15,14 +15,17 @@ from app.api.v1.schemas.documents import (
     DocumentCreate,
     DocumentOut,
     DocumentsPage,
+    DocumentReorderPayload,
     DocumentUpdate,
 )
 from app.api.v1.utils import extract_metadata_filters
 from app.app.services import (
     DocumentCreateData,
     DocumentNotFoundError,
+    DocumentReorderData,
     DocumentUpdateData,
     DocumentVersionNotFoundError,
+    InvalidDocumentOperationError,
     MissingUserError,
     NodeNotFoundError,
     get_service_bundle,
@@ -111,6 +114,30 @@ def get_document(id: int, db: Session = Depends(get_db), include_deleted: bool =
         return document_service.get_document(id, include_deleted=include_deleted)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/documents/reorder", response_model=list[DocumentOut])
+def reorder_documents(
+    payload: DocumentReorderPayload,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    user_id = ctx["user_id"]
+    services = get_service_bundle(db)
+    document_service = services.document()
+    data = DocumentReorderData(
+        ordered_ids=tuple(payload.ordered_ids),
+        doc_type=payload.type,
+        apply_type_filter="type" in payload.model_fields_set,
+    )
+    try:
+        return document_service.reorder_documents(data, user_id=user_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidDocumentOperationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.put("/documents/{id}", response_model=DocumentOut)

@@ -5,6 +5,7 @@ import pytest
 from app.app.services import (
     DocumentCreateData,
     DocumentNotFoundError,
+    DocumentReorderData,
     DocumentService,
     DocumentUpdateData,
     DocumentVersionService,
@@ -213,3 +214,55 @@ def test_list_documents_filters_by_ids_and_type(session):
     )
     assert total_combo == 1
     assert {d.id for d in items_combo} == {d3.id}
+
+
+def test_reorder_documents_does_not_create_versions(session):
+    service = DocumentService(session)
+    version_service = DocumentVersionService(session)
+
+    guide_a = service.create_document(
+        DocumentCreateData(title="Guide A", metadata={}, content={}, type="guide"),
+        user_id="author",
+    )
+    guide_b = service.create_document(
+        DocumentCreateData(title="Guide B", metadata={}, content={}, type="guide"),
+        user_id="author",
+    )
+    note = service.create_document(
+        DocumentCreateData(title="Note", metadata={}, content={}, type="note"),
+        user_id="author",
+    )
+
+    reordered_guides = service.reorder_documents(
+        DocumentReorderData(
+            ordered_ids=(guide_b.id, guide_a.id),
+            doc_type="guide",
+            apply_type_filter=True,
+        ),
+        user_id="moderator",
+    )
+    assert [doc.id for doc in reordered_guides] == [guide_b.id, guide_a.id]
+
+    for doc in (guide_a, guide_b, note):
+        session.refresh(doc)
+
+    assert guide_b.position == 0
+    assert guide_a.position == 1
+    assert note.position == 0
+
+    reordered_all = service.reorder_documents(
+        DocumentReorderData(ordered_ids=(note.id, guide_a.id)),
+        user_id="admin",
+    )
+    assert [doc.id for doc in reordered_all] == [note.id, guide_a.id, guide_b.id]
+
+    for doc in (guide_a, guide_b, note):
+        session.refresh(doc)
+
+    assert note.position == 0
+    assert guide_a.position == 1
+    assert guide_b.position == 2
+
+    assert version_service.get_latest_version_number(guide_a.id) == 1
+    assert version_service.get_latest_version_number(guide_b.id) == 1
+    assert version_service.get_latest_version_number(note.id) == 1

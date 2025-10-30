@@ -756,6 +756,102 @@ def test_permanent_delete_requires_admin_key():
     )
 
 
+def test_documents_reorder_api():
+    app = create_app()
+    client = TestClient(app)
+
+    create_headers = {"X-User-Id": "author"}
+    guide_a = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Guide A",
+            "metadata": {},
+            "content": {"body": "ga"},
+            "type": "guide",
+        },
+        headers=create_headers,
+    )
+    assert guide_a.status_code == 201
+    guide_a_id = guide_a.json()["id"]
+
+    guide_b = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Guide B",
+            "metadata": {},
+            "content": {"body": "gb"},
+            "type": "guide",
+        },
+        headers=create_headers,
+    )
+    assert guide_b.status_code == 201
+    guide_b_id = guide_b.json()["id"]
+
+    note = client.post(
+        "/api/v1/documents",
+        json={
+            "title": "Note",
+            "metadata": {},
+            "content": {"body": "note"},
+            "type": "note",
+        },
+        headers=create_headers,
+    )
+    assert note.status_code == 201
+    note_id = note.json()["id"]
+
+    reorder_headers = {"X-User-Id": "moderator"}
+    reorder_guides = client.post(
+        "/api/v1/documents/reorder",
+        json={"ordered_ids": [guide_b_id, guide_a_id], "type": "guide"},
+        headers=reorder_headers,
+    )
+    assert reorder_guides.status_code == 200
+    guides_payload = reorder_guides.json()
+    assert [item["id"] for item in guides_payload] == [guide_b_id, guide_a_id]
+    assert all(item["version_number"] == 1 for item in guides_payload)
+
+    guide_a_state = client.get(
+        f"/api/v1/documents/{guide_a_id}", headers={"X-User-Id": "auditor"}
+    )
+    guide_b_state = client.get(
+        f"/api/v1/documents/{guide_b_id}", headers={"X-User-Id": "auditor"}
+    )
+    note_state = client.get(
+        f"/api/v1/documents/{note_id}", headers={"X-User-Id": "auditor"}
+    )
+    assert guide_a_state.status_code == guide_b_state.status_code == note_state.status_code == 200
+    assert guide_b_state.json()["position"] == 0
+    assert guide_a_state.json()["position"] == 1
+    assert note_state.json()["position"] == 0
+
+    reorder_all = client.post(
+        "/api/v1/documents/reorder",
+        json={"ordered_ids": [note_id, guide_a_id]},
+        headers=reorder_headers,
+    )
+    assert reorder_all.status_code == 200
+    payload_all = reorder_all.json()
+    assert [item["id"] for item in payload_all] == [note_id, guide_a_id, guide_b_id]
+    assert all(item["version_number"] == 1 for item in payload_all)
+
+    guide_a_state = client.get(
+        f"/api/v1/documents/{guide_a_id}", headers={"X-User-Id": "auditor"}
+    )
+    guide_b_state = client.get(
+        f"/api/v1/documents/{guide_b_id}", headers={"X-User-Id": "auditor"}
+    )
+    note_state = client.get(
+        f"/api/v1/documents/{note_id}", headers={"X-User-Id": "auditor"}
+    )
+    assert guide_a_state.json()["position"] == 1
+    assert guide_b_state.json()["position"] == 2
+    assert note_state.json()["position"] == 0
+    assert guide_a_state.json()["version_number"] == 1
+    assert guide_b_state.json()["version_number"] == 1
+    assert note_state.json()["version_number"] == 1
+
+
 def test_document_versions_api():
     app = create_app()
     client = TestClient(app)

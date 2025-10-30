@@ -64,3 +64,8 @@ class DocumentBindingStatus(BaseModel):
 
 class DocumentBatchBind(BaseModel):
     node_ids: list[int] = Field(default_factory=list)
+
+
+class DocumentReorderPayload(BaseModel):
+    ordered_ids: list[int] = Field(default_factory=list)
+    type: str | None = None

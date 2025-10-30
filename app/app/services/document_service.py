@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional, Sequence
+from typing import Any, Iterable, Optional, Sequence
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -21,6 +21,10 @@ class DocumentNotFoundError(Exception):
     """Raised when the requested document does not exist or is soft-deleted."""
 
 
+class InvalidDocumentOperationError(Exception):
+    """Raised when a document operation payload is invalid."""
+
+
 @dataclass(frozen=True)
 class DocumentCreateData:
     title: str
@@ -37,6 +41,13 @@ class DocumentUpdateData:
     content: Optional[dict[str, Any]] = None
     type: Optional[str] = None
     position: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class DocumentReorderData:
+    ordered_ids: tuple[int, ...]
+    doc_type: Optional[str] = None
+    apply_type_filter: bool = False
 
 
 class DocumentService(BaseService):
@@ -160,6 +171,46 @@ class DocumentService(BaseService):
             doc_type=doc_type,
             doc_ids=doc_ids,
         )
+
+    def reorder_documents(
+        self, data: DocumentReorderData, *, user_id: str
+    ) -> list[Document]:
+        user = self._ensure_user(user_id)
+        documents = list(
+            self._repo.fetch_active_for_reorder(
+                filter_type=data.apply_type_filter,
+                doc_type=data.doc_type,
+            )
+        )
+        if not documents:
+            if data.ordered_ids:
+                raise DocumentNotFoundError("Document not found")
+            return []
+
+        provided_ids = list(data.ordered_ids)
+        provided_ids_set = set(provided_ids)
+        if len(provided_ids) != len(provided_ids_set):
+            raise InvalidDocumentOperationError("Duplicate document ids in reorder payload")
+
+        available_ids = {doc.id for doc in documents}
+        missing = provided_ids_set - available_ids
+        if missing:
+            raise DocumentNotFoundError("Document not found")
+
+        doc_map = {doc.id: doc for doc in documents}
+        ordered_docs = [doc_map[doc_id] for doc_id in provided_ids]
+        remaining_docs = [doc for doc in documents if doc.id not in provided_ids_set]
+        sequence = ordered_docs + remaining_docs
+
+        self._repo.lock_documents(doc.id for doc in sequence)
+
+        for index, document in enumerate(sequence):
+            if document.position != index:
+                document.position = index
+                document.updated_by = user
+
+        self._commit()
+        return sequence
 
     def restore_document(self, document_id: int, *, user_id: str) -> Document:
         user = self._ensure_user(user_id)

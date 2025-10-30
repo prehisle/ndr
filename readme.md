@@ -5,6 +5,7 @@
 > 设计约束：NDR 不内置任何缓存组件，所有缓存与失效策略由调用方负责管理；服务本身仅聚焦节点、文档、节点-文档关系与文档版本的生命周期管理。
 
 - 节点模型提供 `parent_id` 与 `position` 字段：新增节点默认追加到父节点末尾，可通过 `POST /api/v1/nodes/reorder` 批量调整同级排序，响应会返回重排后的节点列表，便于实现目录拖拽。
+- 文档排序改为专用端点：`POST /api/v1/documents/reorder` 支持批量调整顺序且不会生成新的版本记录，`ordered_ids` 支持按需局部置顶，可选通过 `type` 仅重排某一类文档。
 - 节点 slug 约束：仅允许小写字母、数字与下划线（`[a-z0-9_]`），长度 1..255，且禁止包含 `.`，以确保与 PostgreSQL ltree 类型兼容。
 - 高危操作独立密钥：设置 `DESTRUCTIVE_API_KEY` 后，调用方需携带 `X-Admin-Key` 才能访问 `/api/v1/documents/{id}/purge` 与 `/api/v1/nodes/{id}/purge`，用于在软删后彻底清除数据及关联。
 - 调试场景可设置 `TRACE_HTTP=true` 输出请求/响应体（默认截断 2048 字符），部署环境请保持关闭以避免泄露。

@@ -3,8 +3,10 @@ from .bundle import ServiceBundle, get_service_bundle
 from .document_service import (
     DocumentCreateData,
     DocumentNotFoundError,
+    DocumentReorderData,
     DocumentService,
     DocumentUpdateData,
+    InvalidDocumentOperationError,
 )
 from .document_version_service import (
     DocumentSnapshot,
@@ -28,9 +30,11 @@ __all__ = [
     "DocumentCreateData",
     "DocumentUpdateData",
     "DocumentNotFoundError",
+    "DocumentReorderData",
     "DocumentVersionService",
     "DocumentVersionNotFoundError",
     "DocumentSnapshot",
+    "InvalidDocumentOperationError",
     "BaseService",
     "ServiceError",
     "MissingUserError",
