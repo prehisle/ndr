@@ -14,8 +14,8 @@ from app.api.v1.schemas.documents import (
     DocumentBindingStatus,
     DocumentCreate,
     DocumentOut,
-    DocumentsPage,
     DocumentReorderPayload,
+    DocumentsPage,
     DocumentUpdate,
 )
 from app.api.v1.utils import extract_metadata_filters

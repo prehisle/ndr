@@ -7,8 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import OperationalError
 
 from app.api.v1.deps import get_db, require_api_key
 from app.api.v1.routers.admin import router as admin_router
@@ -17,8 +17,8 @@ from app.api.v1.routers.nodes import router as nodes_router
 from app.api.v1.routers.relationships import router as relationships_router
 from app.common.config import get_settings
 from app.common.logging import setup_logging
-from app.infra.db.session import get_engine
 from app.infra.db.alembic_support import get_head_revision, upgrade_to_head
+from app.infra.db.session import get_engine
 from app.infra.observability.metrics import metrics_app
 from app.infra.observability.middleware import MetricsMiddleware
 

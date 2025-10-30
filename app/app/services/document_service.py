@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -190,7 +190,9 @@ class DocumentService(BaseService):
         provided_ids = list(data.ordered_ids)
         provided_ids_set = set(provided_ids)
         if len(provided_ids) != len(provided_ids_set):
-            raise InvalidDocumentOperationError("Duplicate document ids in reorder payload")
+            raise InvalidDocumentOperationError(
+                "Duplicate document ids in reorder payload"
+            )
 
         available_ids = {doc.id for doc in documents}
         missing = provided_ids_set - available_ids

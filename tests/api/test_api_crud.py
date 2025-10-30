@@ -820,7 +820,12 @@ def test_documents_reorder_api():
     note_state = client.get(
         f"/api/v1/documents/{note_id}", headers={"X-User-Id": "auditor"}
     )
-    assert guide_a_state.status_code == guide_b_state.status_code == note_state.status_code == 200
+    assert (
+        guide_a_state.status_code
+        == guide_b_state.status_code
+        == note_state.status_code
+        == 200
+    )
     assert guide_b_state.json()["position"] == 0
     assert guide_a_state.json()["position"] == 1
     assert note_state.json()["position"] == 0
