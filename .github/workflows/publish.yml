@@ -3,7 +3,7 @@ name: Publish Container
 on:
   push:
     branches:
-      - main
+      - master
     tags:
       - "v*"
 
@@ -37,7 +37,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/heads/main') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/heads/master') }}
             type=ref,event=tag
 
       - name: Build and push
