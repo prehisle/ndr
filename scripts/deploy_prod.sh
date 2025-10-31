@@ -5,10 +5,12 @@ set -euo pipefail
 REMOTE_HOST=${REMOTE_HOST:-192.168.1.31}
 REMOTE_USER=${REMOTE_USER:-dy_prod}
 REMOTE_DIR=${REMOTE_DIR:-/home/${REMOTE_USER}/ndr9000}
-LOCAL_IMAGE=${LOCAL_IMAGE:-ndr:prod}
-IMAGE_ARCHIVE=${IMAGE_ARCHIVE:-ndr_prod.tar}
 COMPOSE_SOURCE=${COMPOSE_SOURCE:-deploy/production/docker-compose.yml}
 ENV_SOURCE=${ENV_SOURCE:-deploy/production/.env}
+REGISTRY_HOST=${REGISTRY_HOST:-ghcr.io}
+REGISTRY_USERNAME=${REGISTRY_USERNAME:-}
+REGISTRY_PASSWORD=${REGISTRY_PASSWORD:-}
+COMPOSE_PULL_SERVICE=${COMPOSE_PULL_SERVICE:-app}
 
 SSH_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
 
@@ -34,19 +36,8 @@ require_command() {
 
 require_file "$COMPOSE_SOURCE"
 require_file "$ENV_SOURCE"
-require_command docker
 require_command scp
 require_command ssh
-
-TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR"' EXIT
-
-log "开始构建镜像 ${LOCAL_IMAGE}"
-docker build -t "$LOCAL_IMAGE" .
-
-ARCHIVE_PATH="${TMP_DIR}/${IMAGE_ARCHIVE}"
-log "导出镜像到 ${ARCHIVE_PATH}"
-docker save "$LOCAL_IMAGE" -o "$ARCHIVE_PATH"
 
 log "在远端创建部署目录 ${REMOTE_DIR}"
 ssh "$SSH_TARGET" REMOTE_DIR="$REMOTE_DIR" 'bash -s' <<'EOF'
@@ -58,11 +49,13 @@ log "同步 docker-compose.yml 与 .env"
 scp "$COMPOSE_SOURCE" "$SSH_TARGET:${REMOTE_DIR}/docker-compose.yml"
 scp "$ENV_SOURCE" "$SSH_TARGET:${REMOTE_DIR}/.env"
 
-log "上传镜像归档"
-scp "$ARCHIVE_PATH" "$SSH_TARGET:${REMOTE_DIR}/runtime/${IMAGE_ARCHIVE}"
-
-log "在远端加载镜像并更新服务"
-ssh "$SSH_TARGET" REMOTE_DIR="$REMOTE_DIR" IMAGE_ARCHIVE="$IMAGE_ARCHIVE" LOCAL_IMAGE="$LOCAL_IMAGE" 'bash -s' <<'EOF'
+log "在远端拉取镜像并更新服务"
+ssh "$SSH_TARGET" \
+  REMOTE_DIR="$REMOTE_DIR" \
+  REGISTRY_HOST="$REGISTRY_HOST" \
+  REGISTRY_USERNAME="$REGISTRY_USERNAME" \
+  REGISTRY_PASSWORD="$REGISTRY_PASSWORD" \
+  COMPOSE_PULL_SERVICE="$COMPOSE_PULL_SERVICE" 'bash -s' <<'EOF'
 set -euo pipefail
 
 if docker compose version >/dev/null 2>&1; then
@@ -75,11 +68,22 @@ else
 fi
 
 cd "$REMOTE_DIR"
-docker load -i "runtime/$IMAGE_ARCHIVE" >/dev/null
+
+if [[ -n "$REGISTRY_USERNAME" && -n "$REGISTRY_PASSWORD" ]]; then
+  echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" -u "$REGISTRY_USERNAME" --password-stdin >/dev/null
+fi
+
+if [[ -n "$COMPOSE_PULL_SERVICE" ]]; then
+  "${COMPOSE_CMD[@]}" pull "$COMPOSE_PULL_SERVICE"
+else
+  "${COMPOSE_CMD[@]}" pull
+fi
 
 "${COMPOSE_CMD[@]}" up -d --force-recreate --remove-orphans
 
-rm -f "runtime/$IMAGE_ARCHIVE"
+if [[ -n "$REGISTRY_USERNAME" && -n "$REGISTRY_PASSWORD" ]]; then
+  docker logout "$REGISTRY_HOST" >/dev/null || true
+fi
 EOF
 
 log "部署完成"

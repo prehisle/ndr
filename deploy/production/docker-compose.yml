@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${APP_IMAGE:-ndr:prod}
+    image: ${APP_IMAGE:-ghcr.io/prehisle/ndr-service:latest}
     restart: unless-stopped
     env_file:
       - .env

@@ -1,11 +1,12 @@
 # 生产环境部署指南
 
-本文档说明如何使用一键部署脚本，将本项目部署到生产服务器 `192.168.1.31`。所有步骤均在开发机执行，通过免密 SSH 完成镜像传输和服务更新。
+本文档说明如何使用一键部署脚本，将本项目部署到生产服务器 `192.168.1.31`。所有步骤均在开发机执行，通过免密 SSH 下发配置，并在目标主机上从 GitHub Container Registry 拉取镜像后更新服务。
 
 ## 前置条件
-- 开发机已安装 Docker 与 docker compose 插件（或 `docker-compose`）。  
+- 开发机已安装 docker compose 插件（或 `docker-compose`），用于远程执行前的配置同步。  
 - 已配置对 `dy_prod@192.168.1.31` 的 SSH 免密访问。  
 - 仓库根目录存在 `.venv` 虚拟环境（可选，用于运行校验脚本）。
+- 若镜像仓库为私有，请准备具备 `packages:read` 权限的 GitHub Token，并通过环境变量传入脚本。
 
 ## 目录结构
 ```text
@@ -30,6 +31,7 @@ deploy/production/
    cp deploy/production/.env.example deploy/production/.env
    ```
 2. 根据实际情况修改以下字段：  
+   - `APP_IMAGE`：指向 GitHub 发布的镜像（默认已设为 `ghcr.io/prehisle/ndr-service:latest`）；  
    - `POSTGRES_PASSWORD`：必须改为强密码；  
    - 请同步将 `DB_URL` 中的密码替换为与 `POSTGRES_PASSWORD` 相同的值，避免应用连库失败；  
    - 如需开放 API Key、跨域等功能，在此文件中填写对应值；  
@@ -46,24 +48,30 @@ deploy/production/
    scripts/deploy_prod.sh
    ```
 3. 部署步骤包括：  
-   - 本地构建镜像 `ndr:prod`；  
-   - `docker save` 导出并通过 `scp` 传输到服务器；  
    - 同步最新 `docker-compose.yml` 与 `.env`；  
-   - 服务器端加载镜像并使用 `docker compose up -d --force-recreate --remove-orphans` 更新服务。
+   - 必要时在目标主机上执行 `docker login ghcr.io`；  
+   - 使用 `docker compose pull` 拉取远端镜像；  
+   - 运行 `docker compose up -d --force-recreate --remove-orphans` 完成滚动更新。
 
 ## 自定义参数
 脚本支持以下环境变量，执行前可按需覆盖：
 - `REMOTE_HOST`（默认 `192.168.1.31`）
 - `REMOTE_USER`（默认 `dy_prod`）
 - `REMOTE_DIR`（默认 `/home/<REMOTE_USER>/ndr9000`）
-- `LOCAL_IMAGE`（默认 `ndr:prod`）
-- `IMAGE_ARCHIVE`（默认 `ndr_prod.tar`）
 - `COMPOSE_SOURCE`（默认 `deploy/production/docker-compose.yml`）
 - `ENV_SOURCE`（默认 `deploy/production/.env`）
+- `REGISTRY_HOST`（默认 `ghcr.io`）
+- `REGISTRY_USERNAME` / `REGISTRY_PASSWORD`（可选，用于远端 `docker login`）
+- `COMPOSE_PULL_SERVICE`（默认 `app`，可设为空字符串执行全量 `docker compose pull`）
 
-示例（部署到测试机）：
+示例（部署到测试机，并使用 GitHub Packages Token 登录）：
 ```bash
-REMOTE_HOST=192.168.1.50 REMOTE_DIR=/srv/ndr scripts/deploy_prod.sh
+export REGISTRY_USERNAME=my-ci-bot
+export REGISTRY_PASSWORD="<github-token-with-packages-read>"
+REMOTE_HOST=192.168.1.50 \
+REMOTE_DIR=/srv/ndr \
+REGISTRY_HOST=ghcr.io \
+scripts/deploy_prod.sh
 ```
 
 ## 多实例部署
@@ -75,6 +83,6 @@ REMOTE_HOST=192.168.1.50 REMOTE_DIR=/srv/ndr scripts/deploy_prod.sh
 
 ## 注意事项
 - 首次部署前务必填写 `.env` 并确认数据库密码安全。  
-- 如需回滚，可使用 Git 标签重新构建旧版本镜像再运行脚本。  
+- 如需回滚，可切换至旧标签并确保远端镜像已存在后再次执行脚本。  
 - 如果服务器上既没有 `docker compose` 也没有 `docker-compose`，脚本会终止并提示安装依赖。  
 - 生产环境出现故障时，可通过 `ssh` 登录服务器执行 `docker compose logs`、`docker compose ps` 调试。
