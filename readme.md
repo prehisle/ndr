@@ -48,7 +48,7 @@ pytest
 
 ## 发布镜像到 GHCR
 
-仓库提供 `.github/workflows/publish.yml`，当向 `main` 分支推送或创建 `v*` 标签时，会自动构建容器镜像并推送至 `ghcr.io/<owner>/ndr-service`。流程默认使用 `GITHUB_TOKEN` 写入 GHCR，无需额外手动触发，只需确保仓库与组织允许 Packages 写权限。
+仓库提供 `.github/workflows/publish.yml`，当向 `master` 分支推送或创建 `v*` 标签时，会自动构建容器镜像并推送至 `ghcr.io/<owner>/ndr-service`。流程默认使用 `GITHUB_TOKEN` 写入 GHCR，无需额外手动触发，只需确保仓库与组织允许 Packages 写权限。
 
 如需手动发布，可在 GitHub 生成具备 `write:packages` 权限的 Personal Access Token，并执行：
 
@@ -59,6 +59,38 @@ docker push ghcr.io/<owner>/ndr-service:latest
 ```
 
 若需要保留多个版本，可额外推送 `:vX.Y.Z` 等标签。
+
+### 使用发布镜像
+
+镜像地址（示例）：`ghcr.io/prehisle/ndr-service:latest`。在运行前需确保外部 PostgreSQL 已准备好并可通过环境变量 `DB_URL` 访问。
+
+**使用 Docker CLI：**
+
+```bash
+docker pull ghcr.io/prehisle/ndr-service:latest
+docker run --rm -p 8000:8000 \
+  -e DB_URL="postgresql+psycopg2://user:password@db-host:5432/ndr" \
+  ghcr.io/prehisle/ndr-service:latest
+```
+
+镜像默认监听 `8000` 端口，可根据需要映射到其它端口；如需启用自动迁移、API Key 等功能，可继续传入对应环境变量。
+
+**在 docker-compose.yml 中引用：**
+
+```yaml
+services:
+  app:
+    image: ghcr.io/prehisle/ndr-service:latest
+    environment:
+      DB_URL: postgresql+psycopg2://user:password@postgres:5432/ndr
+      AUTO_APPLY_MIGRATIONS: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+```
+
+如需锁定版本，可将 `latest` 替换为具体 Tag（例如 `v4.1.0`）。默认镜像内置 `uvicorn app.main:app --host 0.0.0.0 --port 8000` 的启动命令，无需额外覆盖。
 
 ## 目录速览
 
