@@ -25,13 +25,16 @@ CONTENT_JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Document(Base, TimestampMixin):
-    """Business document stored in JSON-friendly form.
+    """以 JSON 形式持久化的业务文档。
 
-    Fields
+    字段
     -------
-    id : database primary key（bigint，自增）。
+    id : 数据库主键（bigint，自增）。
     title : 文档标题，使用 `Text` 以兼容大文本。
     metadata_ : JSON 元数据，映射到列名 `metadata`，用于存储扩展属性。
+    content : 文档正文内容，序列化为 JSON。
+    type : 文档类型（如业务应用、系统内置等），用于区分展示或权限。
+    position : 同类型文档内的排序序号，默认为 0。
     created_by / updated_by : 记录最近一次写入该文档的用户标识。
     created_at / updated_at / deleted_at : 来自 `TimestampMixin`，管理审计与软删。
     """
@@ -69,15 +72,18 @@ class Document(Base, TimestampMixin):
 
 
 class Node(Base, TimestampMixin):
-    """Tree node built on top of PostgreSQL ltree paths.
+    """基于 PostgreSQL ltree 维护的树形节点。
 
-    Fields
+    字段
     -------
     id : 自增主键，唯一标识节点。
     name : 节点的业务名称，用于展示。
     slug : 路径片段（与父节点组合形成 `path`）。
+    type : 节点类型，用于区分业务域。
+    parent_id : 父节点 ID，根节点为 `None`。
     parent_path : 父节点完整路径，根节点为 `None`。
     path : 当前节点的完整 ltree 路径，用于祖先/子孙查询。
+    position : 同级节点排序序号，默认为 0。
     created_by / updated_by : 最近一次写入节点的用户。
     created_at / updated_at / deleted_at : `TimestampMixin` 提供的审计时间戳。
     """
