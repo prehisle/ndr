@@ -20,7 +20,7 @@
 
    - `postgres` 服务会自动启动 PostgreSQL 16 并持久化数据到 `pgdata` 卷。
    - `app` 服务会在启动时根据 `AUTO_APPLY_MIGRATIONS=true` 自动执行 Alembic 迁移，然后通过 Uvicorn 暴露接口。
-   - 应用默认监听 http://localhost:8000，API 根路径为 `/api/v1`。
+   - 应用默认监听 http://localhost:9001（可通过 `APP_PORT` 调整），API 根路径为 `/api/v1`。
 
 2. **本地开发（无需容器）**
 
@@ -68,7 +68,7 @@ docker push ghcr.io/<owner>/ndr-service:latest
 
 ```bash
 docker pull ghcr.io/prehisle/ndr-service:latest
-docker run --rm -p 8000:8000 \
+docker run --rm -p 9001:8000 \
   -e DB_URL="postgresql+psycopg2://user:password@db-host:5432/ndr" \
   ghcr.io/prehisle/ndr-service:latest
 ```
@@ -85,7 +85,7 @@ services:
       DB_URL: postgresql+psycopg2://user:password@postgres:5432/ndr
       AUTO_APPLY_MIGRATIONS: "true"
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-9001}:8000"
     depends_on:
       - postgres
 ```
