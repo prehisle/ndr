@@ -1,5 +1,6 @@
 .PHONY: help ps up down reset restart logs logs-app logs-db build \
-	venv install migrate dev test test-db test-remote fmt lint typecheck check
+	venv install migrate dev test test-db test-remote \
+	fmt fmt-check lint typecheck ci check
 
 APP_PORT ?= 9001
 PG_PORT ?= 5541
@@ -24,8 +25,10 @@ help:
 	"  make test          # 跑测试（默认跳过远程 requests 用例）" \
 	"  make test-remote   # 跑全部测试（包含远程 requests 用例，需要服务已启动）" \
 	"  make fmt           # black + isort" \
+	"  make fmt-check     # black/isort 仅检查" \
 	"  make lint          # ruff" \
 	"  make typecheck     # mypy" \
+	"  make ci            # 本地模拟 CI（lint + typecheck + pytest --cov）" \
 	"  make check         # fmt + lint + typecheck + test"
 
 ps:
@@ -91,10 +94,19 @@ fmt:
 	.venv/bin/python -m black .
 	.venv/bin/python -m isort .
 
+fmt-check:
+	.venv/bin/python -m black --check .
+	.venv/bin/python -m isort --check-only .
+
 lint:
 	.venv/bin/python -m ruff check .
 
 typecheck:
 	.venv/bin/python -m mypy app
+
+ci: lint typecheck
+	TEST_DB_URL=$${TEST_DB_URL:-postgresql+psycopg2://ndr:ndr@localhost:$(PG_PORT)/ndr_test} \
+		RUN_REMOTE_REQUESTS_TEST=false \
+		.venv/bin/pytest --cov=app --cov-report=term --cov-report=xml --cov-fail-under=85
 
 check: fmt lint typecheck test
