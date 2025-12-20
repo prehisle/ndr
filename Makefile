@@ -1,5 +1,5 @@
 .PHONY: help ps up down reset restart logs logs-app logs-db build \
-	venv install migrate dev test fmt lint typecheck check
+	venv install migrate dev test test-db test-remote fmt lint typecheck check
 
 APP_PORT ?= 9001
 PG_PORT ?= 5541
@@ -21,7 +21,8 @@ help:
 	"  make migrate       # 运行 Alembic 迁移（本地 DB_URL）" \
 	"  make dev           # 本地启动（reload，端口 9001）" \
 	"" \
-	"  make test          # 跑测试（默认使用 Docker postgres: PG_PORT=$(PG_PORT)）" \
+	"  make test          # 跑测试（默认跳过远程 requests 用例）" \
+	"  make test-remote   # 跑全部测试（包含远程 requests 用例，需要服务已启动）" \
 	"  make fmt           # black + isort" \
 	"  make lint          # ruff" \
 	"  make typecheck     # mypy" \
@@ -71,6 +72,19 @@ dev:
 
 test:
 	TEST_DB_URL=$${TEST_DB_URL:-postgresql+psycopg2://ndr:ndr@localhost:$(PG_PORT)/ndr_test} \
+		RUN_REMOTE_REQUESTS_TEST=false \
+		.venv/bin/pytest
+
+test-db:
+	@APP_PORT=$(APP_PORT) PG_PORT=$(PG_PORT) docker compose exec -T postgres \
+		psql -U ndr -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='ndr_test'" \
+		| tr -d '[:space:]' | grep -q "^1$$" \
+		|| (APP_PORT=$(APP_PORT) PG_PORT=$(PG_PORT) docker compose exec -T postgres psql -U ndr -d postgres -c "CREATE DATABASE ndr_test")
+
+test-remote:
+	TEST_DB_URL=$${TEST_DB_URL:-postgresql+psycopg2://ndr:ndr@localhost:$(PG_PORT)/ndr_test} \
+		NDR_BASE_URL=$${NDR_BASE_URL:-http://localhost:$(APP_PORT)} \
+		RUN_REMOTE_REQUESTS_TEST=true \
 		.venv/bin/pytest
 
 fmt:

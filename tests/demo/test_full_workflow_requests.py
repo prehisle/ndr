@@ -28,6 +28,9 @@ def _request(method: str, path: str, *, headers=None, params=None, json=None):
 
 
 def test_full_workflow_with_soft_delete_and_restore_requests():
+    slug_base = f"workflow_{uuid.uuid4().hex[:8]}"
+    slug_updated = f"{slug_base}_v2"
+
     # --- 创建文档与节点，并建立关系 ---
     doc_resp = _request(
         "POST",
@@ -45,12 +48,14 @@ def test_full_workflow_with_soft_delete_and_restore_requests():
         "POST",
         "/api/v1/nodes",
         headers=_auth_headers("author"),
-        json={"name": "Workflow Node", "slug": "workflow"},
+        json={"name": f"Workflow Node {slug_base}", "slug": slug_base},
     )
     node_body = node_resp.json()
     node_id = node_body["id"]
     assert node_body["parent_id"] is None
-    assert node_body["position"] == 0
+    initial_position = node_body["position"]
+    assert isinstance(initial_position, int)
+    assert initial_position >= 0
 
     _request(
         "POST",
@@ -76,11 +81,11 @@ def test_full_workflow_with_soft_delete_and_restore_requests():
         "PUT",
         f"/api/v1/nodes/{node_id}",
         headers=_auth_headers("editor"),
-        json={"slug": "workflow-v2"},
+        json={"slug": slug_updated},
     ).json()
-    assert node_update["path"] == "workflow-v2"
+    assert node_update["path"] == slug_updated
     assert node_update["parent_id"] is None
-    assert node_update["position"] == 0
+    assert node_update["position"] == initial_position
 
     _request(
         "POST",
@@ -163,7 +168,7 @@ def test_full_workflow_with_soft_delete_and_restore_requests():
         headers=_auth_headers("auditor"),
     ).json()
     assert restored_node["parent_id"] is None
-    assert restored_node["position"] == 0
+    assert restored_node["position"] == initial_position
 
     restored_doc = _request(
         "GET",
