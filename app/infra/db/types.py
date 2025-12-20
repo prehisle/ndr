@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import uuid
 from typing import Any, Callable
 
@@ -9,7 +10,7 @@ from sqlalchemy.types import String, TypeDecorator, UserDefinedType
 
 _pg_ltree: Any = None
 try:  # Optional dependency; SQLAlchemy does not import ltree by default.
-    from sqlalchemy.dialects.postgresql import ltree as _pg_ltree  # type: ignore
+    _pg_ltree = importlib.import_module("sqlalchemy.dialects.postgresql.ltree")
 except Exception:  # pragma: no cover - fallback when ltree dialect is unavailable
     _pg_ltree = None
 
