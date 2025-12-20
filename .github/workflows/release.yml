@@ -39,6 +39,7 @@ jobs:
             @semantic-release/commit-analyzer
             @semantic-release/release-notes-generator
             @semantic-release/github
+            conventional-changelog-conventionalcommits
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,4 +64,3 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/ndr-service:latest
             ghcr.io/${{ github.repository_owner }}/ndr-service:${{ steps.semantic.outputs.new_release_git_tag }}
-
