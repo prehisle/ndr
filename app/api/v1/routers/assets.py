@@ -248,7 +248,8 @@ def list_assets(
         search_query=query,
         status=status,
     )
-    return AssetsPage(page=page, size=size, total=total, items=items)
+    items_out = [AssetOut.model_validate(item) for item in items]
+    return AssetsPage(page=page, size=size, total=total, items=items_out)
 
 
 @router.delete(
