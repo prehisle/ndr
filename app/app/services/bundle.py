@@ -5,14 +5,18 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from app.domain.repositories import (
+    AssetRepository,
     DocumentRepository,
     DocumentVersionRepository,
+    NodeAssetRepository,
     NodeRepository,
     RelationshipRepository,
 )
 
+from .asset_service import AssetService
 from .document_service import DocumentService
 from .document_version_service import DocumentVersionService
+from .node_asset_service import NodeAssetService
 from .node_service import NodeService
 from .relationship_service import RelationshipService
 
@@ -30,6 +34,8 @@ class ServiceBundle:
     _relationship: RelationshipService | None = field(
         default=None, init=False, repr=False
     )
+    _asset: AssetService | None = field(default=None, init=False, repr=False)
+    _node_asset: NodeAssetService | None = field(default=None, init=False, repr=False)
 
     def document(self) -> DocumentService:
         if self._document is None:
@@ -71,6 +77,23 @@ class ServiceBundle:
                 relationship_repository=rel_repo,
             )
         return self._relationship
+
+    def asset(self) -> AssetService:
+        if self._asset is None:
+            repo = AssetRepository(self.session)
+            self._asset = AssetService(self.session, repository=repo)
+        return self._asset
+
+    def node_asset(self) -> NodeAssetService:
+        if self._node_asset is None:
+            node_repo = NodeRepository(self.session)
+            rel_repo = NodeAssetRepository(self.session)
+            self._node_asset = NodeAssetService(
+                self.session,
+                node_repository=node_repo,
+                relationship_repository=rel_repo,
+            )
+        return self._node_asset
 
 
 def get_service_bundle(session: Session) -> ServiceBundle:

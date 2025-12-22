@@ -7,6 +7,10 @@ from pathlib import Path
 
 ENV_FILE = Path(".env")
 
+_ONE_GIB = 1024 * 1024 * 1024
+_FIVE_MIB = 5 * 1024 * 1024
+_SIXTEEN_MIB = 16 * 1024 * 1024
+
 
 def _load_env_file() -> None:
     if not ENV_FILE.exists():
@@ -36,16 +40,41 @@ def _as_list(value: str | None) -> list[str]:
 
 @dataclass
 class Settings:
+    # Database
     DB_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/ndr"
     DB_CONNECT_TIMEOUT: int = 5
+
+    # Metrics & Observability
     ENABLE_METRICS: bool = True
+    TRACE_HTTP: bool = False
+
+    # API Key Authentication
     API_KEY_ENABLED: bool = False
     API_KEY: str | None = None
     DESTRUCTIVE_API_KEY: str | None = None
+
+    # CORS
     CORS_ENABLED: bool = False
     CORS_ORIGINS: list[str] = field(default_factory=list)
+
+    # Database Migrations
     AUTO_APPLY_MIGRATIONS: bool = True
-    TRACE_HTTP: bool = False
+
+    # Object Storage (S3-compatible)
+    STORAGE_BACKEND: str = "s3"
+    STORAGE_MAX_UPLOAD_BYTES: int = _ONE_GIB
+    STORAGE_PART_SIZE_BYTES: int = _SIXTEEN_MIB
+    STORAGE_PRESIGN_EXPIRES_SECONDS: int = 15 * 60
+
+    # S3 Configuration
+    S3_ENDPOINT_URL: str | None = None
+    S3_REGION: str | None = None
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
+    S3_BUCKET: str = "ndr-assets"
+    S3_PREFIX: str = "assets/"
+    S3_USE_SSL: bool = True
+    S3_ADDRESSING_STYLE: str = "path"
 
     def __post_init__(self) -> None:
         db_scheme = self.DB_URL.split(":", 1)[0].lower()
@@ -53,6 +82,12 @@ class Settings:
             raise ValueError(
                 "DB_URL must point to a PostgreSQL datasource (postgresql+driver://...)."
             )
+        if self.STORAGE_PART_SIZE_BYTES < _FIVE_MIB:
+            raise ValueError("STORAGE_PART_SIZE_BYTES must be >= 5 MiB (S3 requirement)")
+        if self.STORAGE_MAX_UPLOAD_BYTES <= 0:
+            raise ValueError("STORAGE_MAX_UPLOAD_BYTES must be positive")
+        if self.STORAGE_PRESIGN_EXPIRES_SECONDS <= 0:
+            raise ValueError("STORAGE_PRESIGN_EXPIRES_SECONDS must be positive")
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -77,6 +112,30 @@ class Settings:
                 os.environ.get("AUTO_APPLY_MIGRATIONS"), cls.AUTO_APPLY_MIGRATIONS
             ),
             TRACE_HTTP=_as_bool(os.environ.get("TRACE_HTTP"), cls.TRACE_HTTP),
+            # Storage
+            STORAGE_BACKEND=os.environ.get("STORAGE_BACKEND", cls.STORAGE_BACKEND),
+            STORAGE_MAX_UPLOAD_BYTES=int(
+                os.environ.get("STORAGE_MAX_UPLOAD_BYTES", cls.STORAGE_MAX_UPLOAD_BYTES)
+            ),
+            STORAGE_PART_SIZE_BYTES=int(
+                os.environ.get("STORAGE_PART_SIZE_BYTES", cls.STORAGE_PART_SIZE_BYTES)
+            ),
+            STORAGE_PRESIGN_EXPIRES_SECONDS=int(
+                os.environ.get(
+                    "STORAGE_PRESIGN_EXPIRES_SECONDS", cls.STORAGE_PRESIGN_EXPIRES_SECONDS
+                )
+            ),
+            # S3
+            S3_ENDPOINT_URL=os.environ.get("S3_ENDPOINT_URL"),
+            S3_REGION=os.environ.get("S3_REGION"),
+            S3_ACCESS_KEY_ID=os.environ.get("S3_ACCESS_KEY_ID"),
+            S3_SECRET_ACCESS_KEY=os.environ.get("S3_SECRET_ACCESS_KEY"),
+            S3_BUCKET=os.environ.get("S3_BUCKET", cls.S3_BUCKET),
+            S3_PREFIX=os.environ.get("S3_PREFIX", cls.S3_PREFIX),
+            S3_USE_SSL=_as_bool(os.environ.get("S3_USE_SSL"), cls.S3_USE_SSL),
+            S3_ADDRESSING_STYLE=os.environ.get(
+                "S3_ADDRESSING_STYLE", cls.S3_ADDRESSING_STYLE
+            ),
         )
 
 

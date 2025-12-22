@@ -64,13 +64,13 @@ def cleanup_tables(apply_migrations):
     with _session_scope() as session:
         session.execute(
             text(
-                "TRUNCATE idempotency_records, node_documents, nodes, documents RESTART IDENTITY CASCADE"
+                "TRUNCATE idempotency_records, node_assets, node_documents, assets, nodes, documents RESTART IDENTITY CASCADE"
             )
         )
     yield
     with _session_scope() as session:
         session.execute(
             text(
-                "TRUNCATE idempotency_records, node_documents, nodes, documents RESTART IDENTITY CASCADE"
+                "TRUNCATE idempotency_records, node_assets, node_documents, assets, nodes, documents RESTART IDENTITY CASCADE"
             )
         )

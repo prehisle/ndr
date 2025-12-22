@@ -12,6 +12,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.api.v1.deps import get_db, require_api_key
 from app.api.v1.routers.admin import router as admin_router
+from app.api.v1.routers.assets import router as assets_router
 from app.api.v1.routers.documents import router as documents_router
 from app.api.v1.routers.nodes import router as nodes_router
 from app.api.v1.routers.relationships import router as relationships_router
@@ -128,6 +129,12 @@ def create_app() -> FastAPI:
         documents_router,
         prefix="/api/v1",
         tags=["documents"],
+        dependencies=[Depends(require_api_key)],
+    )
+    app.include_router(
+        assets_router,
+        prefix="/api/v1",
+        tags=["assets"],
         dependencies=[Depends(require_api_key)],
     )
     app.include_router(
@@ -267,6 +274,8 @@ def create_app() -> FastAPI:
                 "documents",
                 "nodes",
                 "node_documents",
+                "assets",
+                "node_assets",
                 "idempotency_records",
             }
             missing = sorted(required_tables - tables)

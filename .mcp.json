@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "codex": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/GuDaStudio/codexmcp.git",
+        "codexmcp"
+      ],
+      "env": {}
+    }
+  }
+}

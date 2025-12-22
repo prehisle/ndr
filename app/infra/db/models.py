@@ -127,6 +127,7 @@ class Node(Base, TimestampMixin):
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
     documents = relationship("NodeDocument", back_populates="node")
+    assets = relationship("NodeAsset", back_populates="node")
 
 
 class NodeDocument(Base, TimestampMixin):
@@ -197,6 +198,90 @@ Document.version_number = column_property(
     .correlate_except(DocumentVersion)
     .scalar_subquery()
 )
+
+
+class Asset(Base, TimestampMixin):
+    """Object storage file asset metadata.
+
+    Assets represent files stored in external object storage (S3/MinIO/OSS).
+    The actual file content is stored externally; this model tracks metadata
+    and upload state.
+
+    Fields
+    -------
+    id : Database primary key (bigint, auto-increment).
+    filename : Original filename for display purposes.
+    content_type : MIME type of the file.
+    size_bytes : File size in bytes.
+    status : Upload state (UPLOADING, READY, FAILED, DELETED).
+    storage_backend : Storage provider identifier (e.g., "s3").
+    bucket : Object storage bucket name.
+    object_key : Object key (path) in the bucket.
+    etag : Object ETag from storage backend.
+    metadata_ : Extended JSON metadata (upload session info, etc.).
+    created_by / updated_by : User who created/modified the asset.
+    created_at / updated_at / deleted_at : Audit timestamps from TimestampMixin.
+    """
+
+    __tablename__ = "assets"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="UPLOADING")
+    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="s3")
+    bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", METADATA_JSON_TYPE, default=dict, nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("ix_assets_status", "status"),
+        Index(
+            "uq_assets_object_key_active",
+            "object_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    nodes = relationship("NodeAsset", back_populates="asset")
+
+
+class NodeAsset(Base, TimestampMixin):
+    """Association table between nodes and assets.
+
+    Represents the many-to-many relationship between nodes and file assets,
+    similar to NodeDocument for structured documents.
+
+    Fields
+    -------
+    node_id / asset_id : Composite primary key referencing node and asset.
+    created_by / updated_by : User who created/modified the relationship.
+    created_at / updated_at / deleted_at : Audit timestamps from TimestampMixin.
+    """
+
+    __tablename__ = "node_assets"
+
+    node_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("nodes.id"), primary_key=True
+    )
+    asset_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("assets.id"), primary_key=True
+    )
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (Index("ix_node_assets_asset_id", "asset_id"),)
+
+    node = relationship("Node", back_populates="assets")
+    asset = relationship("Asset", back_populates="nodes")
 
 
 class IdempotencyRecord(Base):
