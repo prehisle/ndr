@@ -11,6 +11,8 @@ REGISTRY_HOST=${REGISTRY_HOST:-ghcr.io}
 REGISTRY_USERNAME=${REGISTRY_USERNAME:-}
 REGISTRY_PASSWORD=${REGISTRY_PASSWORD:-}
 COMPOSE_PULL_SERVICE=${COMPOSE_PULL_SERVICE:-app}
+BACKUP_SCRIPTS_SOURCE=${BACKUP_SCRIPTS_SOURCE:-scripts/backup}
+SYNC_BACKUP_SCRIPTS=${SYNC_BACKUP_SCRIPTS:-true}
 
 SSH_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
 
@@ -43,11 +45,21 @@ log "在远端创建部署目录 ${REMOTE_DIR}"
 ssh "$SSH_TARGET" REMOTE_DIR="$REMOTE_DIR" 'bash -s' <<'EOF'
 set -euo pipefail
 mkdir -p "$REMOTE_DIR" "$REMOTE_DIR/runtime" "$REMOTE_DIR/data"
+mkdir -p "$REMOTE_DIR/scripts/backup/backends" "$REMOTE_DIR/backups/daily" "$REMOTE_DIR/backups/logs"
 EOF
 
 log "同步 docker-compose.yml 与 .env"
 scp "$COMPOSE_SOURCE" "$SSH_TARGET:${REMOTE_DIR}/docker-compose.yml"
 scp "$ENV_SOURCE" "$SSH_TARGET:${REMOTE_DIR}/.env"
+
+# 同步备份脚本
+if [[ "${SYNC_BACKUP_SCRIPTS}" == "true" ]] && [[ -d "${BACKUP_SCRIPTS_SOURCE}" ]]; then
+  log "同步备份脚本到远端"
+  scp -r "${BACKUP_SCRIPTS_SOURCE}/"* "$SSH_TARGET:${REMOTE_DIR}/scripts/backup/"
+  ssh "$SSH_TARGET" REMOTE_DIR="$REMOTE_DIR" 'bash -s' <<'EOF'
+chmod +x "$REMOTE_DIR/scripts/backup/"*.sh "$REMOTE_DIR/scripts/backup/backends/"*.sh 2>/dev/null || true
+EOF
+fi
 
 log "在远端拉取镜像并更新服务"
 ssh "$SSH_TARGET" \
