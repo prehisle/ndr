@@ -230,7 +230,9 @@ class Asset(Base, TimestampMixin):
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="UPLOADING")
-    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="s3")
+    storage_backend: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="s3"
+    )
     bucket: Mapped[str] = mapped_column(String(255), nullable=False)
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)

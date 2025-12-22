@@ -196,7 +196,9 @@ class S3StorageClient:
         if filename:
             # Escape quotes in filename for Content-Disposition header
             safe_filename = filename.replace('"', '\\"')
-            params["ResponseContentDisposition"] = f'attachment; filename="{safe_filename}"'
+            params["ResponseContentDisposition"] = (
+                f'attachment; filename="{safe_filename}"'
+            )
 
         try:
             url = self._client.generate_presigned_url(

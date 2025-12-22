@@ -13,7 +13,6 @@ from app.app.services.asset_service import (
 from app.app.services.base import MissingUserError
 from app.infra.db.session import get_session_factory
 from app.infra.storage.client import CompletedPart
-
 from tests.services.mock_storage import MockStorageClient
 
 
@@ -36,9 +35,9 @@ def asset_service(session, mock_storage):
 
 
 class TestCreateMultipartUpload:
-    def test_creates_asset_and_initiates_upload(self, session, asset_service, mock_storage):
-        
-
+    def test_creates_asset_and_initiates_upload(
+        self, session, asset_service, mock_storage
+    ):
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -57,8 +56,6 @@ class TestCreateMultipartUpload:
         assert result.expires_in > 0
 
     def test_sanitizes_filename(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="path/to/file.txt",
             content_type="text/plain",
@@ -70,8 +67,6 @@ class TestCreateMultipartUpload:
         assert result.asset.filename == "path_to_file.txt"
 
     def test_rejects_zero_size(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.txt",
             content_type="text/plain",
@@ -82,8 +77,6 @@ class TestCreateMultipartUpload:
             asset_service.create_multipart_upload(data, user_id="u1")
 
     def test_rejects_negative_size(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.txt",
             content_type="text/plain",
@@ -106,8 +99,6 @@ class TestCreateMultipartUpload:
 
 class TestPresignUploadParts:
     def test_generates_presigned_urls(self, session, asset_service, mock_storage):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -115,9 +106,7 @@ class TestPresignUploadParts:
         )
         result = asset_service.create_multipart_upload(data, user_id="u1")
 
-        upload_id, urls = asset_service.presign_upload_parts(
-            result.asset.id, [1, 2, 3]
-        )
+        upload_id, urls = asset_service.presign_upload_parts(result.asset.id, [1, 2, 3])
 
         assert upload_id == result.upload_id
         assert len(urls) == 3
@@ -127,8 +116,6 @@ class TestPresignUploadParts:
         assert all("uploadId=" in u.url for u in urls)
 
     def test_deduplicates_part_numbers(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -145,8 +132,6 @@ class TestPresignUploadParts:
         assert part_numbers == [1, 2, 3]
 
     def test_rejects_invalid_part_numbers(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -164,8 +149,6 @@ class TestPresignUploadParts:
             asset_service.presign_upload_parts(result.asset.id, [10001])
 
     def test_rejects_too_many_parts(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -177,8 +160,6 @@ class TestPresignUploadParts:
             asset_service.presign_upload_parts(result.asset.id, list(range(1, 1002)))
 
     def test_rejects_non_uploading_asset(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -202,9 +183,9 @@ class TestPresignUploadParts:
 
 
 class TestCompleteMultipartUpload:
-    def test_completes_upload_and_updates_status(self, session, asset_service, mock_storage):
-        
-
+    def test_completes_upload_and_updates_status(
+        self, session, asset_service, mock_storage
+    ):
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -224,8 +205,6 @@ class TestCompleteMultipartUpload:
         assert completed.etag is not None
 
     def test_rejects_empty_parts(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -239,8 +218,6 @@ class TestCompleteMultipartUpload:
             )
 
     def test_rejects_non_uploading_asset(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -275,8 +252,6 @@ class TestCompleteMultipartUpload:
 
 class TestGetAsset:
     def test_returns_asset_by_id(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -294,8 +269,6 @@ class TestGetAsset:
             asset_service.get_asset(99999)
 
     def test_raises_for_deleted_unless_included(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -313,8 +286,6 @@ class TestGetAsset:
 
 class TestListAssets:
     def test_returns_paginated_assets(self, session, asset_service):
-        
-
         for i in range(5):
             data = AssetMultipartInitData(
                 filename=f"file{i}.txt",
@@ -329,8 +300,6 @@ class TestListAssets:
         assert total == 5
 
     def test_filters_by_status(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="ready.pdf",
             content_type="application/pdf",
@@ -358,8 +327,6 @@ class TestListAssets:
 
 class TestSoftDeleteAsset:
     def test_marks_asset_as_deleted(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -374,14 +341,10 @@ class TestSoftDeleteAsset:
         assert asset.status == "DELETED"
 
     def test_raises_for_nonexistent(self, session, asset_service):
-        
-
         with pytest.raises(AssetNotFoundError):
             asset_service.soft_delete_asset(99999, user_id="u1")
 
     def test_raises_for_already_deleted(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -395,9 +358,9 @@ class TestSoftDeleteAsset:
 
 
 class TestAbortMultipartUpload:
-    def test_aborts_upload_and_updates_status(self, session, asset_service, mock_storage):
-        
-
+    def test_aborts_upload_and_updates_status(
+        self, session, asset_service, mock_storage
+    ):
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -412,8 +375,6 @@ class TestAbortMultipartUpload:
         assert mock_storage.uploads[result.upload_id]["aborted"] is True
 
     def test_rejects_non_uploading_asset(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -432,8 +393,6 @@ class TestAbortMultipartUpload:
 
 class TestPresignDownloadUrl:
     def test_generates_download_url(self, session, asset_service, mock_storage):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",
@@ -452,8 +411,6 @@ class TestPresignDownloadUrl:
         assert download.expires_in > 0
 
     def test_rejects_non_ready_asset(self, session, asset_service):
-        
-
         data = AssetMultipartInitData(
             filename="test.pdf",
             content_type="application/pdf",

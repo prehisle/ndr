@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Any, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -18,7 +18,6 @@ from app.domain.repositories.asset_repository import AssetRepository
 from app.infra.db.models import Asset
 from app.infra.storage.client import CompletedPart, StorageClient
 from app.infra.storage.s3_client import S3StorageClient
-
 
 # Maximum number of part URLs that can be requested at once
 MAX_PART_URLS_PER_REQUEST = 1000
@@ -280,10 +279,15 @@ class AssetService(BaseService):
             raise InvalidAssetOperationError("Asset is not in UPLOADING state")
 
         meta = dict(asset.metadata_ or {})
-        multipart = meta.get("multipart") if isinstance(meta.get("multipart"), dict) else {}
+        multipart_raw = meta.get("multipart")
+        multipart: dict[str, Any] = (
+            multipart_raw if isinstance(multipart_raw, dict) else {}
+        )
         upload_id = multipart.get("upload_id")
         if not upload_id:
-            raise InvalidAssetOperationError("Missing multipart upload_id in asset metadata")
+            raise InvalidAssetOperationError(
+                "Missing multipart upload_id in asset metadata"
+            )
 
         expires_in = int(self._settings.STORAGE_PRESIGN_EXPIRES_SECONDS)
         urls: list[AssetPartUrl] = []
@@ -328,10 +332,15 @@ class AssetService(BaseService):
             raise InvalidAssetOperationError("Asset is not in UPLOADING state")
 
         meta = dict(asset.metadata_ or {})
-        multipart = meta.get("multipart") if isinstance(meta.get("multipart"), dict) else {}
+        multipart_raw = meta.get("multipart")
+        multipart: dict[str, Any] = (
+            multipart_raw if isinstance(multipart_raw, dict) else {}
+        )
         upload_id = multipart.get("upload_id")
         if not upload_id:
-            raise InvalidAssetOperationError("Missing multipart upload_id in asset metadata")
+            raise InvalidAssetOperationError(
+                "Missing multipart upload_id in asset metadata"
+            )
 
         if not parts:
             raise InvalidAssetOperationError("parts list cannot be empty")
@@ -345,10 +354,15 @@ class AssetService(BaseService):
         )
 
         # Get actual object metadata from storage
-        head = self._storage.head_object(bucket=asset.bucket, object_key=asset.object_key)
+        head = self._storage.head_object(
+            bucket=asset.bucket, object_key=asset.object_key
+        )
 
         # Verify file size doesn't exceed limit
-        if head.size_bytes and head.size_bytes > self._settings.STORAGE_MAX_UPLOAD_BYTES:
+        if (
+            head.size_bytes
+            and head.size_bytes > self._settings.STORAGE_MAX_UPLOAD_BYTES
+        ):
             # Mark as failed and attempt cleanup
             asset.status = "FAILED"
             asset.metadata_ = {
@@ -359,7 +373,9 @@ class AssetService(BaseService):
             self._commit()
             # Attempt to delete the oversized object
             try:
-                self._storage.delete_object(bucket=asset.bucket, object_key=asset.object_key)
+                self._storage.delete_object(
+                    bucket=asset.bucket, object_key=asset.object_key
+                )
             except Exception:
                 pass  # Best effort cleanup
             raise InvalidAssetOperationError(
@@ -446,7 +462,10 @@ class AssetService(BaseService):
             raise InvalidAssetOperationError("Asset is not in UPLOADING state")
 
         meta = dict(asset.metadata_ or {})
-        multipart = meta.get("multipart") if isinstance(meta.get("multipart"), dict) else {}
+        multipart_raw = meta.get("multipart")
+        multipart: dict[str, Any] = (
+            multipart_raw if isinstance(multipart_raw, dict) else {}
+        )
         upload_id = multipart.get("upload_id")
 
         if upload_id:

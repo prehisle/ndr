@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import List, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -155,7 +155,7 @@ class NodeAssetService(BaseService):
         """
         return self._relationships.list_active(node_id=node_id, asset_id=asset_id)
 
-    def list_bindings_for_asset(self, asset_id: int) -> list[AssetBinding]:
+    def list_bindings_for_asset(self, asset_id: int) -> List[AssetBinding]:
         """List all nodes an asset is bound to.
 
         Args:
@@ -185,7 +185,7 @@ class NodeAssetService(BaseService):
         node_ids: Sequence[int],
         *,
         user_id: str,
-    ) -> list[AssetBinding]:
+    ) -> List[AssetBinding]:
         """Bind an asset to multiple nodes at once.
 
         Args:
@@ -252,7 +252,7 @@ class NodeAssetService(BaseService):
             node_ids=node_ids,
         )
 
-    def list_assets_for_node(self, node_id: int) -> list[Asset]:
+    def list_assets_for_node(self, node_id: int) -> List[Asset]:
         """List all assets bound to a node.
 
         Args:

@@ -7,7 +7,6 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
 from tests.services.mock_storage import MockStorageClient
 
 

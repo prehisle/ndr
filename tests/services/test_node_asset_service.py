@@ -16,7 +16,6 @@ from app.app.services.node_asset_service import (
 )
 from app.app.services.node_service import NodeCreateData, NodeNotFoundError, NodeService
 from app.infra.db.session import get_session_factory
-
 from tests.services.mock_storage import MockStorageClient
 
 
@@ -68,9 +67,9 @@ def _create_asset(asset_service, filename: str, user_id="u1"):
 
 
 class TestBind:
-    def test_binds_asset_to_node(self, session, node_service, asset_service, node_asset_service):
-        
-
+    def test_binds_asset_to_node(
+        self, session, node_service, asset_service, node_asset_service
+    ):
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -83,8 +82,6 @@ class TestBind:
     def test_returns_existing_relation_if_already_bound(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -97,8 +94,6 @@ class TestBind:
     def test_restores_soft_deleted_relation(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -108,23 +103,25 @@ class TestBind:
 
         assert relation.deleted_at is None
 
-    def test_raises_for_nonexistent_node(self, session, asset_service, node_asset_service):
-        
-
+    def test_raises_for_nonexistent_node(
+        self, session, asset_service, node_asset_service
+    ):
         asset = _create_asset(asset_service, "test.pdf")
 
         with pytest.raises(NodeNotFoundError):
             node_asset_service.bind(99999, asset.id, user_id="u1")
 
-    def test_raises_for_nonexistent_asset(self, session, node_service, node_asset_service):
-        
-
+    def test_raises_for_nonexistent_asset(
+        self, session, node_service, node_asset_service
+    ):
         node = _create_node(node_service, "Root", "root")
 
         with pytest.raises(AssetNotFoundError):
             node_asset_service.bind(node.id, 99999, user_id="u1")
 
-    def test_requires_user(self, session, node_service, asset_service, node_asset_service):
+    def test_requires_user(
+        self, session, node_service, asset_service, node_asset_service
+    ):
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -133,9 +130,9 @@ class TestBind:
 
 
 class TestUnbind:
-    def test_soft_deletes_relation(self, session, node_service, asset_service, node_asset_service):
-        
-
+    def test_soft_deletes_relation(
+        self, session, node_service, asset_service, node_asset_service
+    ):
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -148,8 +145,6 @@ class TestUnbind:
     def test_raises_for_nonexistent_relation(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -159,8 +154,6 @@ class TestUnbind:
     def test_raises_for_already_unbound(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Root", "root")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -175,8 +168,6 @@ class TestList:
     def test_lists_relations_by_node(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node1 = _create_node(node_service, "Node1", "node1")
         node2 = _create_node(node_service, "Node2", "node2")
         asset1 = _create_asset(asset_service, "asset1.pdf")
@@ -193,8 +184,6 @@ class TestList:
     def test_lists_relations_by_asset(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node1 = _create_node(node_service, "Node1", "node1")
         node2 = _create_node(node_service, "Node2", "node2")
         asset = _create_asset(asset_service, "test.pdf")
@@ -211,8 +200,6 @@ class TestListBindingsForAsset:
     def test_returns_binding_info(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         root = _create_node(node_service, "Root", "root")
         child = _create_node(node_service, "Child", "child", parent_path="root")
         asset = _create_asset(asset_service, "test.pdf")
@@ -237,8 +224,6 @@ class TestBatchBind:
     def test_binds_to_multiple_nodes(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node1 = _create_node(node_service, "Node1", "node1")
         node2 = _create_node(node_service, "Node2", "node2")
         node3 = _create_node(node_service, "Node3", "node3")
@@ -255,8 +240,6 @@ class TestBatchBind:
     def test_deduplicates_node_ids(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Node", "node")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -269,8 +252,6 @@ class TestBatchBind:
     def test_raises_for_nonexistent_node(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Node", "node")
         asset = _create_asset(asset_service, "test.pdf")
 
@@ -282,8 +263,6 @@ class TestBindingStatus:
     def test_returns_summary(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node1 = _create_node(node_service, "Node1", "node1")
         node2 = _create_node(node_service, "Node2", "node2")
         asset = _create_asset(asset_service, "test.pdf")
@@ -301,8 +280,6 @@ class TestListAssetsForNode:
     def test_returns_assets_for_node(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Node", "node")
         asset1 = _create_asset(asset_service, "asset1.pdf")
         asset2 = _create_asset(asset_service, "asset2.pdf")
@@ -323,8 +300,6 @@ class TestListAssetsForNode:
     def test_excludes_deleted_assets(
         self, session, node_service, asset_service, node_asset_service
     ):
-        
-
         node = _create_node(node_service, "Node", "node")
         asset1 = _create_asset(asset_service, "asset1.pdf")
         asset2 = _create_asset(asset_service, "asset2.pdf")

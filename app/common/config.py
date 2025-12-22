@@ -83,7 +83,9 @@ class Settings:
                 "DB_URL must point to a PostgreSQL datasource (postgresql+driver://...)."
             )
         if self.STORAGE_PART_SIZE_BYTES < _FIVE_MIB:
-            raise ValueError("STORAGE_PART_SIZE_BYTES must be >= 5 MiB (S3 requirement)")
+            raise ValueError(
+                "STORAGE_PART_SIZE_BYTES must be >= 5 MiB (S3 requirement)"
+            )
         if self.STORAGE_MAX_UPLOAD_BYTES <= 0:
             raise ValueError("STORAGE_MAX_UPLOAD_BYTES must be positive")
         if self.STORAGE_PRESIGN_EXPIRES_SECONDS <= 0:
@@ -122,7 +124,8 @@ class Settings:
             ),
             STORAGE_PRESIGN_EXPIRES_SECONDS=int(
                 os.environ.get(
-                    "STORAGE_PRESIGN_EXPIRES_SECONDS", cls.STORAGE_PRESIGN_EXPIRES_SECONDS
+                    "STORAGE_PRESIGN_EXPIRES_SECONDS",
+                    cls.STORAGE_PRESIGN_EXPIRES_SECONDS,
                 )
             ),
             # S3

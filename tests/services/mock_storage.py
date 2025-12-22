@@ -35,7 +35,9 @@ class MockStorageClient:
             "completed": False,
             "aborted": False,
         }
-        return MultipartUpload(upload_id=upload_id, bucket=bucket, object_key=object_key)
+        return MultipartUpload(
+            upload_id=upload_id, bucket=bucket, object_key=object_key
+        )
 
     def presign_upload_part(
         self,

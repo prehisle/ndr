@@ -6,6 +6,8 @@ including multipart upload, download URL generation, and node binding.
 
 from __future__ import annotations
 
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
@@ -166,7 +168,11 @@ def complete_multipart_upload(
 
     result = idempotency.handle(
         request=request,
-        payload={"body": payload.model_dump(), "resource_id": asset_id, "user_id": user_id},
+        payload={
+            "body": payload.model_dump(),
+            "resource_id": asset_id,
+            "user_id": user_id,
+        },
         status_code=status.HTTP_200_OK,
         executor=executor,
     )
@@ -189,7 +195,8 @@ def get_asset(
     asset_service: AssetService = services.asset()
 
     try:
-        return asset_service.get_asset(asset_id, include_deleted=include_deleted)
+        asset = asset_service.get_asset(asset_id, include_deleted=include_deleted)
+        return AssetOut.model_validate(asset)
     except AssetNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -268,14 +275,14 @@ def soft_delete_asset(
 
 @router.get(
     "/assets/{asset_id}/bindings",
-    response_model=list[AssetBindingOut],
+    response_model=List[AssetBindingOut],
     summary="List asset bindings",
     description="List all nodes an asset is bound to.",
 )
 def list_asset_bindings(
     asset_id: int,
     db: Session = Depends(get_db),
-) -> list[AssetBindingOut]:
+) -> List[AssetBindingOut]:
     services = get_service_bundle(db)
     node_asset_service: NodeAssetService = services.node_asset()
 
@@ -297,7 +304,7 @@ def list_asset_bindings(
 
 @router.post(
     "/assets/{asset_id}/batch-bind",
-    response_model=list[AssetBindingOut],
+    response_model=List[AssetBindingOut],
     summary="Batch bind asset",
     description="Bind an asset to multiple nodes at once.",
 )
@@ -306,7 +313,7 @@ def batch_bind_asset(
     payload: AssetBatchBind,
     db: Session = Depends(get_db),
     ctx: dict = Depends(get_request_context),
-) -> list[AssetBindingOut]:
+) -> List[AssetBindingOut]:
     user_id = ctx["user_id"]
     services = get_service_bundle(db)
     node_asset_service: NodeAssetService = services.node_asset()
@@ -412,14 +419,14 @@ def abort_multipart_upload(
 
 @router.get(
     "/nodes/{node_id}/assets",
-    response_model=list[AssetOut],
+    response_model=List[AssetOut],
     summary="List node assets",
     description="List all assets bound to a specific node.",
 )
 def list_node_assets(
     node_id: int,
     db: Session = Depends(get_db),
-) -> list[AssetOut]:
+) -> List[AssetOut]:
     services = get_service_bundle(db)
     node_asset_service: NodeAssetService = services.node_asset()
 
@@ -428,7 +435,7 @@ def list_node_assets(
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    return assets
+    return [AssetOut.model_validate(asset) for asset in assets]
 
 
 @router.delete(
