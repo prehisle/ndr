@@ -1,0 +1,39 @@
+# NDR 测试环境 Docker Compose 配置
+# 使用方法: 通过 deploy-test.sh 脚本部署，会自动生成 .env 文件
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/prehisle/ndr-service:latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-ndr}_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-9000}:8000"
+    networks:
+      - ndr_network
+
+  db:
+    image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-ndr}_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ndr}
+      POSTGRES_USER: ${POSTGRES_USER:-ndr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ndr}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ndr} -d ${POSTGRES_DB:-ndr}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - ndr_network
+
+networks:
+  ndr_network:
+    driver: bridge
