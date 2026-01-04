@@ -460,3 +460,56 @@ class NodeService(BaseService):
             doc_ids=doc_ids,
         )
         return items, total
+
+    def recalculate_all_subtree_counts(self) -> dict:
+        """全量重算所有节点的子树文档计数。
+
+        采用自底向上策略：
+        1. 重置所有节点计数为 0
+        2. 遍历所有活跃的文档绑定关系
+        3. 对每个绑定，更新节点及其祖先链的计数
+
+        Returns:
+            包含统计信息的字典
+        """
+        from sqlalchemy import update as sql_update
+
+        # 1. 重置所有节点计数为 0
+        self.session.execute(sql_update(Node).values(subtree_doc_count=0))
+
+        # 2. 获取所有活跃的文档绑定关系（只统计活跃节点和活跃文档）
+        active_bindings = self._relationships.list_active(
+            node_id=None, document_id=None
+        )
+
+        # 3. 统计每个祖先节点需要增加的计数
+        ancestor_count_map: dict[int, int] = {}
+        processed_bindings = 0
+
+        for binding in active_bindings:
+            node = self._repo.get(binding.node_id)
+            if not node or node.deleted_at is not None:
+                continue
+
+            # 检查文档是否活跃
+            doc = self.session.get(Document, binding.document_id)
+            if not doc or doc.deleted_at is not None:
+                continue
+
+            # 获取祖先链并累加计数
+            for ancestor_id in self._repo.get_ancestor_ids(node.path):
+                ancestor_count_map[ancestor_id] = (
+                    ancestor_count_map.get(ancestor_id, 0) + 1
+                )
+            processed_bindings += 1
+
+        # 4. 批量更新所有祖先节点的计数
+        for ancestor_id, count in ancestor_count_map.items():
+            self._repo.update_subtree_counts([ancestor_id], count)
+
+        self._commit()
+
+        return {
+            "processed_bindings": processed_bindings,
+            "updated_nodes": len(ancestor_count_map),
+        }

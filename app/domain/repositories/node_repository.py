@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import Session
 
@@ -165,3 +165,40 @@ class NodeRepository:
         items = list(self._session.execute(base_stmt).scalars())
         total = self._session.execute(count_stmt).scalar_one()
         return items, total
+
+    def get_ancestor_ids(self, node_path: str) -> list[int]:
+        """获取节点的所有祖先 ID 列表（包含自身）。
+
+        利用 ltree 路径解析祖先节点。例如路径 "a.b.c" 会返回
+        路径为 "a"、"a.b"、"a.b.c" 的节点 ID。
+        """
+        if not node_path:
+            return []
+        path_parts = node_path.split(".")
+        ancestor_paths = [".".join(path_parts[: i + 1]) for i in range(len(path_parts))]
+        stmt = (
+            select(Node.id)
+            .where(Node.path.in_(ancestor_paths))
+            .where(Node.deleted_at.is_(None))
+        )
+        return list(self._session.execute(stmt).scalars())
+
+    def update_subtree_counts(self, node_ids: Sequence[int], delta: int) -> int:
+        """批量更新节点的子树文档计数。
+
+        Args:
+            node_ids: 需要更新的节点 ID 列表
+            delta: 计数增量（正数增加，负数减少）
+
+        Returns:
+            更新的行数
+        """
+        if not node_ids or delta == 0:
+            return 0
+        stmt = (
+            update(Node)
+            .where(Node.id.in_(node_ids))
+            .values(subtree_doc_count=Node.subtree_doc_count + delta)
+        )
+        result = self._session.execute(stmt)
+        return result.rowcount or 0  # type: ignore[attr-defined]

@@ -63,12 +63,16 @@ class RelationshipService(BaseService):
         if relation:
             if relation.deleted_at is None:
                 return relation
+            # 恢复已删除的关系，需要更新祖先链计数
             relation.deleted_at = None
             relation.updated_by = user
+            ancestor_ids = self._nodes.get_ancestor_ids(node.path)
+            self._nodes.update_subtree_counts(ancestor_ids, +1)
             self._commit()
             self.session.refresh(relation)
             return relation
 
+        # 新建关系，更新祖先链计数
         relation = NodeDocument(
             node_id=node_id,
             document_id=document_id,
@@ -76,6 +80,8 @@ class RelationshipService(BaseService):
             updated_by=user,
         )
         self.session.add(relation)
+        ancestor_ids = self._nodes.get_ancestor_ids(node.path)
+        self._nodes.update_subtree_counts(ancestor_ids, +1)
         self._commit()
         self.session.refresh(relation)
         return relation
@@ -85,8 +91,13 @@ class RelationshipService(BaseService):
         relation = self._relationships.get(node_id, document_id)
         if not relation or relation.deleted_at is not None:
             raise RelationshipNotFoundError("Relation not found")
+        # 获取节点信息以更新祖先链计数
+        node = self._nodes.get(node_id)
         relation.deleted_at = datetime.now(timezone.utc)
         relation.updated_by = user
+        if node and node.deleted_at is None:
+            ancestor_ids = self._nodes.get_ancestor_ids(node.path)
+            self._nodes.update_subtree_counts(ancestor_ids, -1)
         self._commit()
 
     def list(
@@ -123,9 +134,16 @@ class RelationshipService(BaseService):
         if missing:
             raise NodeNotFoundError("Node not found")
 
+        # 统计每个祖先节点需要增加的计数
+        ancestor_count_map: dict[int, int] = {}
+
         for node_id in ordered_ids:
             relation = self._relationships.get(node_id, document_id)
+            node = node_map[node_id]
+            needs_count_update = False
+
             if relation is None:
+                # 新建关系
                 relation = NodeDocument(
                     node_id=node_id,
                     document_id=document_id,
@@ -133,10 +151,23 @@ class RelationshipService(BaseService):
                     updated_by=user,
                 )
                 self.session.add(relation)
-                continue
-            if relation.deleted_at is not None:
+                needs_count_update = True
+            elif relation.deleted_at is not None:
+                # 恢复已删除关系
                 relation.deleted_at = None
                 relation.updated_by = user
+                needs_count_update = True
+
+            if needs_count_update:
+                for ancestor_id in self._nodes.get_ancestor_ids(node.path):
+                    ancestor_count_map[ancestor_id] = (
+                        ancestor_count_map.get(ancestor_id, 0) + 1
+                    )
+
+        # 批量更新所有受影响祖先节点的计数
+        for ancestor_id, delta in ancestor_count_map.items():
+            self._nodes.update_subtree_counts([ancestor_id], delta)
+
         self._commit()
         return self.list_bindings_for_document(document_id)
 

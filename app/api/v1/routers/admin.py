@@ -8,6 +8,7 @@ from sqlalchemy import delete, inspect, text
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, require_admin_key
+from app.app.services.node_service import NodeService
 from app.infra.db.alembic_support import get_head_revision
 from app.infra.db.models import IdempotencyRecord
 
@@ -200,3 +201,27 @@ def reindex_or_analyze(
         executed.append(t)
     db.commit()
     return {"executed": executed, "method": method, "dialect": bind.dialect.name}
+
+
+@router.post("/admin/recalculate-doc-counts")
+def recalculate_doc_counts(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """全量重算所有节点的子树文档计数。
+
+    此操作会：
+    1. 将所有节点的 subtree_doc_count 重置为 0
+    2. 遍历所有活跃的文档绑定关系
+    3. 更新每个节点及其祖先链的计数
+
+    适用场景：
+    - 首次部署后初始化计数
+    - 数据不一致时修复计数
+    - 批量导入后同步计数
+    """
+    node_service = NodeService(db)
+    result = node_service.recalculate_all_subtree_counts()
+    return {
+        "success": True,
+        "processed_bindings": result["processed_bindings"],
+        "updated_nodes": result["updated_nodes"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }

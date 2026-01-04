@@ -123,6 +123,9 @@ class Node(Base, TimestampMixin):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     parent_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     path: Mapped[str] = mapped_column(LtreeType(), nullable=False)
+    subtree_doc_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 

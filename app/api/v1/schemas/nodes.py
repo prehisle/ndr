@@ -50,6 +50,7 @@ class NodeOut(BaseModel):
     path: str
     parent_id: int | None = None
     position: int
+    subtree_doc_count: int = 0
     created_by: str
     updated_by: str
     created_at: datetime
