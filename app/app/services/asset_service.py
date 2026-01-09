@@ -398,19 +398,29 @@ class AssetService(BaseService):
     def presign_download_url(self, asset_id: int) -> AssetDownloadUrl:
         """Generate a presigned URL for downloading an asset.
 
-        Args:
-            asset_id: The asset's primary key.
+           Args:
+               asset_id: The asset's primary key.
 
-        Returns:
-            AssetDownloadUrl with the presigned URL and expiration.
+           Returns:
+               AssetDownloadUrl with the presigned URL and expiration.
 
         Raises:
-            AssetNotFoundError: If the asset doesn't exist.
-            InvalidAssetOperationError: If the asset is not in READY state.
+               AssetNotFoundError: If the asset doesn't exist.
+               InvalidAssetOperationError: If the asset is not in READY state.
         """
         asset = self.get_asset(asset_id)
         if asset.status != "READY":
             raise InvalidAssetOperationError("Asset is not ready for download")
+
+        # If public URL base is configured, return public URL (no expiration)
+        public_base = self._settings.S3_PUBLIC_URL_BASE
+        if public_base:
+            # Remove trailing slash from base and leading slash from object_key
+            base = public_base.rstrip("/")
+            key = asset.object_key.lstrip("/")
+            url = f"{base}/{key}"
+            # Return 0 expires_in to indicate no expiration
+            return AssetDownloadUrl(url=url, expires_in=0)
 
         expires_in = int(self._settings.STORAGE_PRESIGN_EXPIRES_SECONDS)
         url = self._storage.presign_download(

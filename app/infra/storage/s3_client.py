@@ -55,7 +55,10 @@ class S3StorageClient:
             ) from exc
 
         addressing_style = (settings.S3_ADDRESSING_STYLE or "path").strip().lower()
-        config = Config(s3={"addressing_style": addressing_style})
+        config = Config(
+            s3={"addressing_style": addressing_style},
+            signature_version="s3v4",  # 强制使用 V4 签名，兼容 MinIO
+        )
 
         return boto3.client(
             "s3",

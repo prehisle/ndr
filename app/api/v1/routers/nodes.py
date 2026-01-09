@@ -74,6 +74,69 @@ def create_node(
     return result.response
 
 
+@router.get("/nodes/by-path", response_model=NodeOut)
+def get_node_by_path(
+    path: str = Query(..., description="节点路径，如 'course.chapter.section'"),
+    include_deleted: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    """通过路径获取节点。
+
+    路径格式为以点号分隔的 slug 序列，如 "course.chapter.section"。
+    """
+    services = get_service_bundle(db)
+    node_service = services.node()
+    try:
+        return node_service.get_node_by_path(path, include_deleted=include_deleted)
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/nodes/by-path/subtree-documents",
+    response_model=DocumentsPage,
+    description=SUBTREE_DOCUMENTS_DESCRIPTION,
+)
+def get_subtree_documents_by_path(
+    request: Request,
+    path: str = Query(..., description="节点路径，如 'course.chapter'"),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    include_deleted_nodes: bool = Query(default=False),
+    include_deleted_documents: bool = Query(default=False),
+    include_descendants: bool = Query(default=True),
+    search: str | None = Query(default=None, alias="query"),
+    type: str | None = Query(default=None),
+    doc_ids: list[int] | None = Query(default=None, alias="id"),
+    db: Session = Depends(get_db),
+):
+    """通过节点路径获取子树下的文档列表。
+
+    支持与 /nodes/{id}/subtree-documents 相同的过滤参数。
+    """
+    services = get_service_bundle(db)
+    node_service = services.node()
+    metadata_filters = extract_metadata_filters(request)
+    try:
+        items, total = node_service.paginate_subtree_documents_by_path(
+            path,
+            page=page,
+            size=size,
+            include_deleted_nodes=include_deleted_nodes,
+            include_deleted_documents=include_deleted_documents,
+            include_descendants=include_descendants,
+            metadata_filters=metadata_filters or None,
+            search_query=search,
+            doc_type=type,
+            doc_ids=doc_ids,
+        )
+        return {"page": page, "size": size, "total": total, "items": items}
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LtreeNotAvailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+
 @router.get("/nodes/{id}", response_model=NodeOut)
 def get_node(id: int, db: Session = Depends(get_db), include_deleted: bool = False):
     services = get_service_bundle(db)

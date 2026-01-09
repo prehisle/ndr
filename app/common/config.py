@@ -75,6 +75,9 @@ class Settings:
     S3_PREFIX: str = "assets/"
     S3_USE_SSL: bool = True
     S3_ADDRESSING_STYLE: str = "path"
+    # Public URL base for direct access (e.g., "http://192.168.1.4:9005/ndr-assets")
+    # When set, download URLs will be public URLs instead of presigned URLs
+    S3_PUBLIC_URL_BASE: str | None = None
 
     def __post_init__(self) -> None:
         db_scheme = self.DB_URL.split(":", 1)[0].lower()
@@ -139,6 +142,7 @@ class Settings:
             S3_ADDRESSING_STYLE=os.environ.get(
                 "S3_ADDRESSING_STYLE", cls.S3_ADDRESSING_STYLE
             ),
+            S3_PUBLIC_URL_BASE=os.environ.get("S3_PUBLIC_URL_BASE"),
         )
 
 

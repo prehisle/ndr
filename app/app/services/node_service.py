@@ -77,6 +77,41 @@ class NodeService(BaseService):
             raise NodeNotFoundError("Node not found")
         return node
 
+    def get_node_by_path(self, path: str, *, include_deleted: bool = False) -> Node:
+        """通过路径获取节点。
+
+        Args:
+            path: 节点路径，如 "course.chapter.section"
+            include_deleted: 是否包含已删除的节点
+
+        Returns:
+            匹配的节点
+
+        Raises:
+            NodeNotFoundError: 节点不存在或已被删除
+        """
+        if include_deleted:
+            # 如果需要包含已删除节点，使用通用查询
+            # 优先返回活跃节点（deleted_at IS NULL），然后按删除时间倒序
+            from sqlalchemy import select
+
+            from app.infra.db.models import Node as NodeModel
+
+            stmt = (
+                select(NodeModel)
+                .where(NodeModel.path == path)
+                .order_by(
+                    NodeModel.deleted_at.is_(None).desc(), NodeModel.deleted_at.desc()
+                )
+            )
+            node = self.session.execute(stmt).scalars().first()
+        else:
+            node = self._repo.get_active_by_path(path)
+
+        if not node:
+            raise NodeNotFoundError(f"Node not found: {path}")
+        return node
+
     def create_node(self, data: NodeCreateData, *, user_id: str) -> Node:
         user = self._ensure_user(user_id)
         # 兜底校验，防止绕过 API 层的非法 slug 写入
@@ -460,6 +495,46 @@ class NodeService(BaseService):
             doc_ids=doc_ids,
         )
         return items, total
+
+    def paginate_subtree_documents_by_path(
+        self,
+        path: str,
+        *,
+        page: int,
+        size: int,
+        include_deleted_nodes: bool = False,
+        include_deleted_documents: bool = False,
+        include_descendants: bool = True,
+        metadata_filters: MetadataFilters | None = None,
+        search_query: str | None = None,
+        doc_type: str | None = None,
+        doc_ids: Sequence[int] | None = None,
+    ) -> tuple[list[Document], int]:
+        """通过节点路径获取子树下的文档列表。
+
+        Args:
+            path: 节点路径，如 "course.chapter"
+            其他参数同 paginate_subtree_documents
+
+        Returns:
+            (文档列表, 总数)
+
+        Raises:
+            NodeNotFoundError: 节点不存在
+        """
+        node = self.get_node_by_path(path, include_deleted=include_deleted_nodes)
+        return self.paginate_subtree_documents(
+            node.id,
+            page=page,
+            size=size,
+            include_deleted_nodes=include_deleted_nodes,
+            include_deleted_documents=include_deleted_documents,
+            include_descendants=include_descendants,
+            metadata_filters=metadata_filters,
+            search_query=search_query,
+            doc_type=doc_type,
+            doc_ids=doc_ids,
+        )
 
     def recalculate_all_subtree_counts(self) -> dict:
         """全量重算所有节点的子树文档计数。
