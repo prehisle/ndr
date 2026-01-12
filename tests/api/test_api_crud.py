@@ -377,7 +377,10 @@ def test_node_crud_and_children_and_relationships():
     assert any(rel["document_id"] == doc_id for rel in rels)
 
     # Unbind
-    r = client.delete(f"/api/v1/nodes/{child_id}/unbind/{doc_id}")
+    r = client.delete(
+        f"/api/v1/nodes/{child_id}/unbind/{doc_id}",
+        headers={"X-User-Id": "u1"},
+    )
     assert r.status_code == 200
 
     # List relationships after unbind -> empty

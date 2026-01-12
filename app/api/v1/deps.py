@@ -23,7 +23,8 @@ def get_request_context(
     x_user_id: str | None = Header(default=None),
     x_request_id: str | None = Header(default=None),
 ):
-    user_id = x_user_id if x_user_id not in (None, "") else "<missing>"
+    # Return empty string when user_id is missing, so service layer can reject write operations
+    user_id = x_user_id if x_user_id not in (None, "") else ""
     return {
         "user_id": user_id,
         "request_id": x_request_id,
@@ -35,7 +36,17 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     settings = get_settings()
     if settings.API_KEY_ENABLED:
         api_key_expected = getattr(settings, "API_KEY", None)
-        if not x_api_key or (api_key_expected and x_api_key != api_key_expected):
+        if not api_key_expected:
+            logger = logging.getLogger("http")
+            logger.error(
+                "API_KEY_ENABLED=true but API_KEY is not configured. "
+                "Set API_KEY environment variable or disable API_KEY_ENABLED."
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="API key authentication is enabled but no API_KEY configured",
+            )
+        if not x_api_key or x_api_key != api_key_expected:
             raise HTTPException(status_code=401, detail="Invalid API key")
 
 

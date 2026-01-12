@@ -65,7 +65,7 @@ class TestInitMultipartUpload:
             assert data["part_size_bytes"] > 0
             assert data["expires_in"] > 0
 
-    def test_uses_missing_user_when_no_header(self):
+    def test_rejects_request_without_user_id(self):
         with patch(
             "app.app.services.asset_service.AssetService._build_storage_client",
             return_value=MockStorageClient(),
@@ -80,9 +80,9 @@ class TestInitMultipartUpload:
             }
             resp = client.post("/api/v1/assets/multipart/init", json=payload)
 
-            # The API allows requests without X-User-Id, using "<missing>" as the user
-            assert resp.status_code == 201
-            assert resp.json()["asset"]["created_by"] == "<missing>"
+            # The API rejects requests without X-User-Id for write operations
+            assert resp.status_code == 400
+            assert "user_id is required" in resp.json()["detail"]
 
     def test_validates_size_bytes(self):
         with patch(
