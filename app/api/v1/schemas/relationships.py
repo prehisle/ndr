@@ -7,4 +7,5 @@ class RelationshipOut(BaseModel):
 
     node_id: int
     document_id: int
+    relation_type: str = "output"
     created_by: str

@@ -51,7 +51,14 @@ class RelationshipService(BaseService):
             raise DocumentNotFoundError("Document not found")
         return document
 
-    def bind(self, node_id: int, document_id: int, *, user_id: str) -> NodeDocument:
+    def bind(
+        self,
+        node_id: int,
+        document_id: int,
+        *,
+        relation_type: str = "output",
+        user_id: str,
+    ) -> NodeDocument:
         user = self._ensure_user(user_id)
         node = self._nodes.get(node_id)
         if not node or node.deleted_at is not None:
@@ -62,9 +69,16 @@ class RelationshipService(BaseService):
         relation = self._relationships.get(node_id, document_id)
         if relation:
             if relation.deleted_at is None:
+                # 如果关系类型不同，更新类型
+                if relation.relation_type != relation_type:
+                    relation.relation_type = relation_type
+                    relation.updated_by = user
+                    self._commit()
+                    self.session.refresh(relation)
                 return relation
             # 恢复已删除的关系，需要更新祖先链计数
             relation.deleted_at = None
+            relation.relation_type = relation_type
             relation.updated_by = user
             ancestor_ids = self._nodes.get_ancestor_ids(node.path)
             self._nodes.update_subtree_counts(ancestor_ids, +1)
@@ -76,6 +90,7 @@ class RelationshipService(BaseService):
         relation = NodeDocument(
             node_id=node_id,
             document_id=document_id,
+            relation_type=relation_type,
             created_by=user,
             updated_by=user,
         )
@@ -101,9 +116,15 @@ class RelationshipService(BaseService):
         self._commit()
 
     def list(
-        self, *, node_id: Optional[int] = None, document_id: Optional[int] = None
+        self,
+        *,
+        node_id: Optional[int] = None,
+        document_id: Optional[int] = None,
+        relation_type: Optional[str] = None,
     ) -> List[NodeDocument]:
-        return self._relationships.list_active(node_id=node_id, document_id=document_id)
+        return self._relationships.list_active(
+            node_id=node_id, document_id=document_id, relation_type=relation_type
+        )
 
     def list_bindings_for_document(self, document_id: int) -> List[DocumentBinding]:
         self._require_active_document(document_id)

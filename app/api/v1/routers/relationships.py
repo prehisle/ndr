@@ -26,6 +26,9 @@ def bind_relationship(
     request: Request,
     node_id: int,
     document_id: int,
+    relation_type: str = Query(
+        "output", description="关系类型: output(产出文档) 或 source(源文档)"
+    ),
     db: Session = Depends(get_db),
     ctx=Depends(get_request_context),
 ):
@@ -36,7 +39,9 @@ def bind_relationship(
 
     def executor():
         try:
-            return rel_service.bind(node_id, document_id, user_id=user_id)
+            return rel_service.bind(
+                node_id, document_id, relation_type=relation_type, user_id=user_id
+            )
         except NodeNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except DocumentNotFoundError as exc:
@@ -46,7 +51,12 @@ def bind_relationship(
 
     result = service.handle(
         request=request,
-        payload={"node_id": node_id, "document_id": document_id, "user_id": user_id},
+        payload={
+            "node_id": node_id,
+            "document_id": document_id,
+            "relation_type": relation_type,
+            "user_id": user_id,
+        },
         status_code=status.HTTP_201_CREATED,
         executor=executor,
     )
@@ -76,8 +86,13 @@ def unbind_relationship(
 def list_relationships(
     node_id: Optional[int] = None,
     document_id: Optional[int] = None,
+    relation_type: Optional[str] = Query(
+        None, description="按关系类型过滤: output 或 source"
+    ),
     db: Session = Depends(get_db),
 ):
     services = get_service_bundle(db)
     rel_service = services.relationship()
-    return rel_service.list(node_id=node_id, document_id=document_id)
+    return rel_service.list(
+        node_id=node_id, document_id=document_id, relation_type=relation_type
+    )

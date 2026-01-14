@@ -26,12 +26,15 @@ class RelationshipRepository:
         *,
         node_id: Optional[int] = None,
         document_id: Optional[int] = None,
+        relation_type: Optional[str] = None,
     ) -> list[NodeDocument]:
         stmt = select(NodeDocument).where(NodeDocument.deleted_at.is_(None))
         if node_id is not None:
             stmt = stmt.where(NodeDocument.node_id == node_id)
         if document_id is not None:
             stmt = stmt.where(NodeDocument.document_id == document_id)
+        if relation_type is not None:
+            stmt = stmt.where(NodeDocument.relation_type == relation_type)
         return list(self._session.execute(stmt).scalars())
 
     def list_nodes_for_document(

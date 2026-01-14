@@ -334,6 +334,104 @@ def unbind_document(
     return {"ok": True}
 
 
+# ============ 源文档 API ============
+
+
+@router.post("/nodes/{id}/sources", status_code=status.HTTP_201_CREATED)
+def bind_source_document(
+    id: int,
+    document_id: int = Query(..., description="要关联的源文档 ID"),
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    """关联源文档到节点（作为工作流输入）"""
+    user_id = ctx["user_id"]
+    services = get_service_bundle(db)
+    rel_service = services.relationship()
+    try:
+        relation = rel_service.bind(
+            id, document_id, relation_type="source", user_id=user_id
+        )
+        return {
+            "node_id": relation.node_id,
+            "document_id": relation.document_id,
+            "relation_type": relation.relation_type,
+        }
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/nodes/{id}/sources")
+def list_source_documents(
+    id: int,
+    db: Session = Depends(get_db),
+):
+    """列出节点的源文档"""
+    services = get_service_bundle(db)
+    node_service = services.node()
+    rel_service = services.relationship()
+
+    # 验证节点存在
+    node = node_service.get_node(id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    relations = rel_service.list(node_id=id, relation_type="source")
+    result = []
+    for rel in relations:
+        try:
+            doc = services.document().get_document(rel.document_id)
+        except DocumentNotFoundError:
+            # 文档已删除，跳过此关联
+            continue
+        result.append(
+            {
+                "node_id": rel.node_id,
+                "document_id": rel.document_id,
+                "relation_type": rel.relation_type,
+                "document": {
+                    "id": doc.id,
+                    "title": doc.title,
+                    "type": doc.type,
+                },
+            }
+        )
+    return result
+
+
+@router.delete(
+    "/nodes/{id}/sources/{document_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def unbind_source_document(
+    id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    ctx=Depends(get_request_context),
+):
+    """解除源文档关联"""
+    services = get_service_bundle(db)
+    rel_service = services.relationship()
+
+    # 检查是否是源文档关系
+    relations = rel_service.list(
+        node_id=id, document_id=document_id, relation_type="source"
+    )
+    if not relations:
+        raise HTTPException(status_code=404, detail="Source relation not found")
+
+    try:
+        rel_service.unbind(id, document_id, user_id=ctx["user_id"])
+    except RelationshipNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissingUserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return None
+
+
 @router.get("/nodes/{id}/children", response_model=list[NodeOut])
 def list_children(
     id: int,

@@ -139,6 +139,7 @@ class NodeDocument(Base, TimestampMixin):
     Fields
     -------
     node_id / document_id : 复合主键，指向关联的节点与文档。
+    relation_type : 关系类型，'output'（产出文档）或 'source'（源文档）。
     created_by / updated_by : 记录关系的创建及最近修改来源。
     """
 
@@ -149,6 +150,9 @@ class NodeDocument(Base, TimestampMixin):
     )
     document_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("documents.id"), primary_key=True
+    )
+    relation_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="output"
     )
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False)
