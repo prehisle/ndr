@@ -201,4 +201,4 @@ class NodeRepository:
             .values(subtree_doc_count=Node.subtree_doc_count + delta)
         )
         result = self._session.execute(stmt)
-        return result.rowcount or 0  # type: ignore[attr-defined]
+        return result.rowcount or 0
