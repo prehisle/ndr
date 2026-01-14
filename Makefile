@@ -2,8 +2,8 @@
 	venv install migrate dev test test-db test-remote \
 	fmt fmt-check lint typecheck ci check
 
-APP_PORT ?= 9001
-PG_PORT ?= 5541
+APP_PORT ?= 9000
+PG_PORT ?= 5432
 
 help:
 	@printf "%s\n" \
@@ -20,7 +20,7 @@ help:
 	"  make venv          # 初始化 .venv（若不存在）" \
 	"  make install       # 安装 Python 依赖到 .venv" \
 	"  make migrate       # 运行 Alembic 迁移（本地 DB_URL）" \
-	"  make dev           # 本地启动（reload，端口 9001）" \
+	"  make dev           # 本地启动（reload，端口 9000）" \
 	"" \
 	"  make test          # 跑测试（默认跳过远程 requests 用例）" \
 	"  make test-remote   # 跑全部测试（包含远程 requests 用例，需要服务已启动）" \
