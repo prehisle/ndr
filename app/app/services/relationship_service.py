@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.app.services.base import BaseService
 from app.app.services.document_service import DocumentNotFoundError
 from app.app.services.node_service import NodeNotFoundError
+from app.domain import COUNTED_RELATION_TYPE
 from app.domain.repositories import NodeRepository, RelationshipRepository
 from app.infra.db.models import Document, NodeDocument
 
@@ -56,7 +57,7 @@ class RelationshipService(BaseService):
         node_id: int,
         document_id: int,
         *,
-        relation_type: str = "output",
+        relation_type: str = COUNTED_RELATION_TYPE,
         user_id: str,
     ) -> NodeDocument:
         user = self._ensure_user(user_id)
@@ -69,24 +70,31 @@ class RelationshipService(BaseService):
         relation = self._relationships.get(node_id, document_id)
         if relation:
             if relation.deleted_at is None:
-                # 如果关系类型不同，更新类型
+                # 如果关系类型不同，更新类型并按"仅统计 output"规则修正计数
                 if relation.relation_type != relation_type:
+                    was_counted = relation.relation_type == COUNTED_RELATION_TYPE
+                    will_be_counted = relation_type == COUNTED_RELATION_TYPE
                     relation.relation_type = relation_type
                     relation.updated_by = user
+                    if was_counted != will_be_counted:
+                        delta = 1 if will_be_counted else -1
+                        ancestor_ids = self._nodes.get_ancestor_ids(node.path)
+                        self._nodes.update_subtree_counts(ancestor_ids, delta)
                     self._commit()
                     self.session.refresh(relation)
                 return relation
-            # 恢复已删除的关系，需要更新祖先链计数
+            # 恢复已删除的关系，只有 output 类型才更新祖先链计数
             relation.deleted_at = None
             relation.relation_type = relation_type
             relation.updated_by = user
-            ancestor_ids = self._nodes.get_ancestor_ids(node.path)
-            self._nodes.update_subtree_counts(ancestor_ids, +1)
+            if relation_type == COUNTED_RELATION_TYPE:
+                ancestor_ids = self._nodes.get_ancestor_ids(node.path)
+                self._nodes.update_subtree_counts(ancestor_ids, +1)
             self._commit()
             self.session.refresh(relation)
             return relation
 
-        # 新建关系，更新祖先链计数
+        # 新建关系，只有 output 类型才更新祖先链计数
         relation = NodeDocument(
             node_id=node_id,
             document_id=document_id,
@@ -95,8 +103,9 @@ class RelationshipService(BaseService):
             updated_by=user,
         )
         self.session.add(relation)
-        ancestor_ids = self._nodes.get_ancestor_ids(node.path)
-        self._nodes.update_subtree_counts(ancestor_ids, +1)
+        if relation_type == COUNTED_RELATION_TYPE:
+            ancestor_ids = self._nodes.get_ancestor_ids(node.path)
+            self._nodes.update_subtree_counts(ancestor_ids, +1)
         self._commit()
         self.session.refresh(relation)
         return relation
@@ -106,11 +115,21 @@ class RelationshipService(BaseService):
         relation = self._relationships.get(node_id, document_id)
         if not relation or relation.deleted_at is not None:
             raise RelationshipNotFoundError("Relation not found")
-        # 获取节点信息以更新祖先链计数
+        # 获取节点和文档信息以判断是否需要更新祖先链计数
         node = self._nodes.get(node_id)
+        document = self.session.get(Document, document_id)
+        # 只有当 relation_type=output、节点未删除、文档未删除时才扣减
+        # 如果文档已软删除，soft_delete_document 已经扣减过了
+        should_decrement = (
+            relation.relation_type == COUNTED_RELATION_TYPE
+            and node is not None
+            and node.deleted_at is None
+            and document is not None
+            and document.deleted_at is None
+        )
         relation.deleted_at = datetime.now(timezone.utc)
         relation.updated_by = user
-        if node and node.deleted_at is None:
+        if should_decrement and node is not None:
             ancestor_ids = self._nodes.get_ancestor_ids(node.path)
             self._nodes.update_subtree_counts(ancestor_ids, -1)
         self._commit()
@@ -164,18 +183,25 @@ class RelationshipService(BaseService):
             needs_count_update = False
 
             if relation is None:
-                # 新建关系
+                # 新建关系，默认为 output 类型
                 relation = NodeDocument(
                     node_id=node_id,
                     document_id=document_id,
+                    relation_type=COUNTED_RELATION_TYPE,
                     created_by=user,
                     updated_by=user,
                 )
                 self.session.add(relation)
                 needs_count_update = True
             elif relation.deleted_at is not None:
-                # 恢复已删除关系
+                # 恢复已删除关系，设为 output 类型
                 relation.deleted_at = None
+                relation.relation_type = COUNTED_RELATION_TYPE
+                relation.updated_by = user
+                needs_count_update = True
+            elif relation.relation_type != COUNTED_RELATION_TYPE:
+                # 已存在的非 output 关系，升级为 output
+                relation.relation_type = COUNTED_RELATION_TYPE
                 relation.updated_by = user
                 needs_count_update = True
 

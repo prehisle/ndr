@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
@@ -12,9 +12,10 @@ from app.app.services.document_version_service import (
     DocumentVersionNotFoundError,
     DocumentVersionService,
 )
-from app.domain.repositories import DocumentRepository
+from app.domain import COUNTED_RELATION_TYPE
+from app.domain.repositories import DocumentRepository, NodeRepository
 from app.domain.repositories.document_filters import MetadataFilters
-from app.infra.db.models import Document, NodeDocument
+from app.infra.db.models import Document, Node, NodeDocument
 
 
 class DocumentNotFoundError(Exception):
@@ -133,9 +134,51 @@ class DocumentService(BaseService):
         document = self._repo.get(document_id)
         if not document or document.deleted_at is not None:
             raise DocumentNotFoundError("Document not found or already deleted")
+
+        # 与全量重算口径一致：文档 deleted 后，其 output 绑定不再计入 subtree_doc_count
+        self._update_subtree_counts_for_document(document_id, delta=-1)
+
         document.deleted_at = datetime.now(timezone.utc)
         document.updated_by = user
         self._commit()
+
+    def _update_subtree_counts_for_document(self, document_id: int, delta: int) -> None:
+        """按"仅统计 output"规则，将某文档的绑定关系对祖先链的贡献整体加/减。
+
+        Args:
+            document_id: 文档 ID
+            delta: +1 表示恢复时补回，-1 表示删除时扣减
+        """
+        if delta == 0:
+            return
+
+        nodes_repo = NodeRepository(self.session)
+
+        # 获取该文档所有活跃的 output 绑定的节点 ID
+        stmt = (
+            select(NodeDocument.node_id)
+            .where(NodeDocument.document_id == document_id)
+            .where(NodeDocument.deleted_at.is_(None))
+            .where(NodeDocument.relation_type == COUNTED_RELATION_TYPE)
+        )
+        node_ids = list(dict.fromkeys(self.session.execute(stmt).scalars()))
+        if not node_ids:
+            return
+
+        # 统计每个祖先节点需要调整的计数
+        ancestor_count_map: dict[int, int] = {}
+        for node_id in node_ids:
+            node = self.session.get(Node, node_id)
+            if not node or node.deleted_at is not None:
+                continue
+            for ancestor_id in nodes_repo.get_ancestor_ids(node.path):
+                ancestor_count_map[ancestor_id] = (
+                    ancestor_count_map.get(ancestor_id, 0) + 1
+                )
+
+        # 批量更新祖先节点计数
+        for ancestor_id, count in ancestor_count_map.items():
+            nodes_repo.update_subtree_counts([ancestor_id], delta * count)
 
     def list_documents(
         self,
@@ -231,6 +274,10 @@ class DocumentService(BaseService):
         document.deleted_at = None
         document.updated_by = user
         document.updated_at = datetime.now(timezone.utc)
+
+        # 恢复文档后补回其 output 绑定对祖先链的贡献
+        self._update_subtree_counts_for_document(document_id, delta=+1)
+
         self.session.flush()
         snapshot = self._versions.build_snapshot_from_document(document)
         self._versions.record_snapshot(snapshot, user_id=user, operation="restore-soft")

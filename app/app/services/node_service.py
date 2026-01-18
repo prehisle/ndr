@@ -9,6 +9,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.app.services.base import BaseService
+from app.domain import COUNTED_RELATION_TYPE
 from app.domain.repositories import NodeRepository, RelationshipRepository
 from app.domain.repositories.document_filters import MetadataFilters
 from app.domain.repositories.node_repository import LtreeNotAvailableError
@@ -176,6 +177,7 @@ class NodeService(BaseService):
         target_parent_path = node.parent_path
         target_parent_id = node.parent_id
         original_parent_id = node.parent_id
+        original_parent_path = node.parent_path
         if data.parent_path_set:
             if data.parent_path:
                 parent_node = self._repo.get_active_by_path(data.parent_path)
@@ -229,6 +231,10 @@ class NodeService(BaseService):
             node.parent_path = new_parent_path
             if target_parent_id != original_parent_id:
                 node.position = self._repo.next_position(target_parent_id)
+                # 迁移计数：把整棵子树的 output 绑定总数从旧父链挪到新父链
+                self._migrate_subtree_counts_on_move(
+                    node.path, original_parent_path, new_parent_path
+                )
 
         if path_changed:
             old_path = node.path
@@ -262,16 +268,97 @@ class NodeService(BaseService):
         self.session.refresh(node)
         return node
 
+    def _migrate_subtree_counts_on_move(
+        self,
+        subtree_root_path: str,
+        old_parent_path: Optional[str],
+        new_parent_path: Optional[str],
+    ) -> None:
+        """节点移动时迁移子树的 output 绑定计数到新祖先链。
+
+        Args:
+            subtree_root_path: 被移动子树根节点的路径
+            old_parent_path: 原父节点路径（根节点为 None）
+            new_parent_path: 新父节点路径（根节点为 None）
+        """
+        from sqlalchemy import func, select
+
+        # 获取子树所有节点 ID（包括根节点和所有后代）
+        subtree_nodes = self._repo.fetch_subtree(
+            subtree_root_path, include_deleted=False
+        )
+        subtree_node_ids = [n.id for n in subtree_nodes]
+        if not subtree_node_ids:
+            return
+
+        # 统计子树中 output 类型的活跃绑定总数
+        counted_stmt = (
+            select(func.count())
+            .select_from(NodeDocument)
+            .join(Document, Document.id == NodeDocument.document_id)
+            .where(NodeDocument.deleted_at.is_(None))
+            .where(NodeDocument.relation_type == COUNTED_RELATION_TYPE)
+            .where(NodeDocument.node_id.in_(subtree_node_ids))
+            .where(Document.deleted_at.is_(None))
+        )
+        subtree_binding_count = self.session.execute(counted_stmt).scalar_one()
+
+        if not subtree_binding_count:
+            return
+
+        # 计算旧父链和新父链的祖先 ID
+        old_external_ancestor_ids = (
+            self._repo.get_ancestor_ids(old_parent_path) if old_parent_path else []
+        )
+        new_external_ancestor_ids = (
+            self._repo.get_ancestor_ids(new_parent_path) if new_parent_path else []
+        )
+
+        # 从旧祖先链减去计数
+        if old_external_ancestor_ids:
+            self._repo.update_subtree_counts(
+                old_external_ancestor_ids, -subtree_binding_count
+            )
+
+        # 向新祖先链加上计数
+        if new_external_ancestor_ids:
+            self._repo.update_subtree_counts(
+                new_external_ancestor_ids, +subtree_binding_count
+            )
+
     def soft_delete_node(self, node_id: int, *, user_id: str) -> None:
         user = self._ensure_user(user_id)
         node = self._repo.get(node_id)
         if not node or node.deleted_at is not None:
             raise NodeNotFoundError("Node not found or already deleted")
+
+        # 删除节点前，减去该节点直接绑定的 output 文档对祖先链的贡献
+        self._decrement_ancestor_counts_for_node(node)
+
         parent_id = node.parent_id
         node.deleted_at = datetime.now(timezone.utc)
         node.updated_by = user
         self._repo.normalize_positions(parent_id)
         self._commit()
+
+    def _decrement_ancestor_counts_for_node(self, node: Node) -> None:
+        """减去节点直接绑定的 output 文档对祖先链的贡献。"""
+        from sqlalchemy import func, select
+
+        direct_count_stmt = (
+            select(func.count())
+            .select_from(NodeDocument)
+            .join(Document, Document.id == NodeDocument.document_id)
+            .where(NodeDocument.deleted_at.is_(None))
+            .where(NodeDocument.relation_type == COUNTED_RELATION_TYPE)
+            .where(NodeDocument.node_id == node.id)
+            .where(Document.deleted_at.is_(None))
+        )
+        direct_output_count = self.session.execute(direct_count_stmt).scalar_one()
+
+        if direct_output_count and node.parent_path:
+            ancestor_ids = self._repo.get_ancestor_ids(node.parent_path)
+            self._repo.update_subtree_counts(ancestor_ids, -direct_output_count)
 
     def purge_node(self, node_id: int, *, user_id: str) -> None:
         self._ensure_user(user_id)
@@ -411,10 +498,59 @@ class NodeService(BaseService):
         node.deleted_at = None
         node.updated_by = user
         node.updated_at = datetime.now(timezone.utc)
+
+        # 恢复节点后：补回该节点直接绑定的 output 文档对祖先链的贡献
+        self._increment_ancestor_counts_for_node(node)
+
+        # 重算该节点自身的 subtree_doc_count
+        self._recalculate_node_subtree_count(node)
+
         self._repo.normalize_positions(node.parent_id)
         self._commit()
         self.session.refresh(node)
         return node
+
+    def _increment_ancestor_counts_for_node(self, node: Node) -> None:
+        """补回节点直接绑定的 output 文档对祖先链的贡献。"""
+        from sqlalchemy import func, select
+
+        direct_count_stmt = (
+            select(func.count())
+            .select_from(NodeDocument)
+            .join(Document, Document.id == NodeDocument.document_id)
+            .where(NodeDocument.deleted_at.is_(None))
+            .where(NodeDocument.relation_type == COUNTED_RELATION_TYPE)
+            .where(NodeDocument.node_id == node.id)
+            .where(Document.deleted_at.is_(None))
+        )
+        direct_output_count = self.session.execute(direct_count_stmt).scalar_one()
+
+        if direct_output_count and node.parent_path:
+            ancestor_ids = self._repo.get_ancestor_ids(node.parent_path)
+            self._repo.update_subtree_counts(ancestor_ids, +direct_output_count)
+
+    def _recalculate_node_subtree_count(self, node: Node) -> None:
+        """重算该节点自身的 subtree_doc_count。"""
+        from sqlalchemy import func, select
+
+        subtree_nodes = self._repo.fetch_subtree(node.path, include_deleted=False)
+        subtree_node_ids = [n.id for n in subtree_nodes]
+
+        if subtree_node_ids:
+            subtree_count_stmt = (
+                select(func.count())
+                .select_from(NodeDocument)
+                .join(Document, Document.id == NodeDocument.document_id)
+                .where(NodeDocument.deleted_at.is_(None))
+                .where(NodeDocument.relation_type == COUNTED_RELATION_TYPE)
+                .where(NodeDocument.node_id.in_(subtree_node_ids))
+                .where(Document.deleted_at.is_(None))
+            )
+            node.subtree_doc_count = self.session.execute(
+                subtree_count_stmt
+            ).scalar_one()
+        else:
+            node.subtree_doc_count = 0
 
     def get_subtree_documents(
         self,
@@ -541,7 +677,7 @@ class NodeService(BaseService):
 
         采用自底向上策略：
         1. 重置所有节点计数为 0
-        2. 遍历所有活跃的文档绑定关系
+        2. 遍历所有活跃的 output 类型文档绑定关系
         3. 对每个绑定，更新节点及其祖先链的计数
 
         Returns:
@@ -552,9 +688,9 @@ class NodeService(BaseService):
         # 1. 重置所有节点计数为 0
         self.session.execute(sql_update(Node).values(subtree_doc_count=0))
 
-        # 2. 获取所有活跃的文档绑定关系（只统计活跃节点和活跃文档）
+        # 2. 获取所有活跃的 output 类型文档绑定关系（只统计活跃节点和活跃文档）
         active_bindings = self._relationships.list_active(
-            node_id=None, document_id=None
+            node_id=None, document_id=None, relation_type=COUNTED_RELATION_TYPE
         )
 
         # 3. 统计每个祖先节点需要增加的计数
